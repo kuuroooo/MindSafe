@@ -1,4 +1,6 @@
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
+
+import numpy as np
 
 from .base import BaseAgent, format_history
 
@@ -20,7 +22,8 @@ class TherapistAgent(BaseAgent):
         analysis: Dict[str, Any],
         chat_history: Optional[List[Dict[str, str]]] = None,
         revision_feedback: Optional[str] = None,
-    ) -> str:
+    ) -> Tuple[str, np.ndarray]:
+        """Return (response text, last-layer last-token hidden state)."""
         parts = [f"Prior conversation:\n{format_history(chat_history)}"]
 
         if analysis:
@@ -42,4 +45,4 @@ class TherapistAgent(BaseAgent):
 
         parts.append("Respond to the user. Reply with only the response text.")
         prompt = "\n\n".join(parts)
-        return await self._generate(prompt, max_tokens=600)
+        return await self._generate_with_hidden(prompt, max_tokens=600)
