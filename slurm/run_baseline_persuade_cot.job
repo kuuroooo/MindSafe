@@ -5,7 +5,7 @@
 #SBATCH --gpus=4
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=18
-#SBATCH --time=12:00:00
+#SBATCH --time=18:00:00
 #SBATCH --output=logs/persuade_cot_%j.out
 #SBATCH --error=logs/persuade_cot_%j.err
 #SBATCH --mail-type=BEGIN,END,FAIL
