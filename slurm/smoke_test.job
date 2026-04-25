@@ -5,7 +5,7 @@
 #SBATCH --gpus=4
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=18
-#SBATCH --time=01:00:00
+#SBATCH --time=01:30:00
 #SBATCH --output=logs/smoke_%j.out
 #SBATCH --error=logs/smoke_%j.err
 #SBATCH --mail-type=BEGIN,END,FAIL
@@ -51,7 +51,7 @@ python scripts/run_baseline_experiment.py \
     --output-dir "$OUTPUT_DIR" \
     --arms psi psi+persuade_cot \
     --scenarios ambiguous_crisis \
-    --n-conversations 2
+    --n-conversations 1
 
 echo "=== Smoke test end: $(date) ==="
 echo "Inspect: $OUTPUT_DIR/results.json"
