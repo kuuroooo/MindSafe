@@ -149,11 +149,17 @@ class HFClient:
         max_tokens: Optional[int] = None,
         chat_history: Optional[List[Dict[str, str]]] = None,
     ) -> Tuple[str, np.ndarray]:
-        """Generate and return (text, last-layer last-token hidden state).
+        """Generate text, then take ONE extra forward pass for the hidden state.
 
-        The hidden vector is the last-layer representation at the final token
-        of the full (prompt + generated) sequence — the model's internal
-        state just after producing its response.
+        Passing `output_hidden_states=True` to `.generate()` forces HF to
+        store per-step hidden states for every generated token across every
+        layer, which makes generation many times slower (and bloats memory).
+        We only need *one* vector — the last-layer representation at the
+        final token of the full (prompt + generated) sequence — so we run
+        a normal generate, then a single prompt+response forward pass with
+        `use_cache=False` to grab that vector. Net cost: one extra
+        forward at full sequence length (~few % on top of the dominant
+        autoregressive generation phase).
         """
         max_tokens = max_tokens or self.config.max_new_tokens
         prompt = self._build_prompt(system_prompt, user_prompt, chat_history)
@@ -165,8 +171,6 @@ class HFClient:
             max_new_tokens=max_tokens,
             pad_token_id=self.tokenizer.pad_token_id,
             eos_token_id=self.tokenizer.eos_token_id,
-            return_dict_in_generate=True,
-            output_hidden_states=True,
         )
         if temperature > 0:
             gen_kwargs.update(do_sample=True, temperature=temperature, top_p=0.9)
@@ -174,18 +178,21 @@ class HFClient:
             gen_kwargs.update(do_sample=False)
 
         with torch.no_grad():
-            outputs = self.model.generate(**inputs, **gen_kwargs)
+            out_ids = self.model.generate(**inputs, **gen_kwargs)
 
-        sequences = outputs.sequences
-        new_tokens = sequences[0][inputs["input_ids"].shape[1]:]
+        prompt_len = inputs["input_ids"].shape[1]
+        new_tokens = out_ids[0][prompt_len:]
         text = self.tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
 
-        # hidden_states: tuple[n_new_tokens], each a tuple[n_layers+1] of
-        # tensors [batch, seq, hidden_dim]. Take the last-generated step,
-        # last layer, last token position.
-        last_step = outputs.hidden_states[-1]
-        last_layer = last_step[-1]
-        hidden = last_layer[0, -1, :].detach().to(torch.float32).cpu().numpy()
+        # Single forward over the full (prompt + response) sequence to
+        # extract the last-layer last-token hidden state.
+        with torch.no_grad():
+            out = self.model(
+                input_ids=out_ids,
+                output_hidden_states=True,
+                use_cache=False,
+            )
+        hidden = out.hidden_states[-1][0, -1, :].detach().to(torch.float32).cpu().numpy()
         return text, hidden
 
     async def generate_with_hidden_async(
