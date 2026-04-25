@@ -52,7 +52,9 @@ class VLLMServer:
             "--max-model-len", str(self.max_model_len),
             "--dtype", self.dtype,
             "--gpu-memory-utilization", str(self.gpu_memory_utilization),
-            "--disable-log-requests",
+            # Newer vLLM defaults request logging OFF; the old
+            # `--disable-log-requests` flag was removed. To re-enable, add
+            # `--enable-log-requests` to extra_args.
         ]
         if self.quantization:
             cmd += ["--quantization", self.quantization]
