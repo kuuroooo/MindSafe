@@ -26,16 +26,16 @@ judge_model:
   # switch to an AWQ / GPTQ quantized 70B (e.g.
   # "hugging-quants/Meta-Llama-3.1-70B-Instruct-AWQ-INT4") and set
   # quantization: "awq". On 3×A100-80GB bfloat16 fits comfortably.
-  model_id: "meta-llama/Meta-Llama-3.1-70B-Instruct"
+  model_id: "hugging-quants/Meta-Llama-3.1-70B-Instruct-AWQ-INT4"
   server:
     host: "localhost"
     port: 8000
     gpu_ids: [1, 2, 3]
     tensor_parallel_size: 3
     max_model_len: 8192
-    dtype: "bfloat16"
+    dtype: "float16"
     gpu_memory_utilization: 0.90
-    quantization: null         # set to "awq" for AWQ-quantized models
+    quantization: "awq"         # set to "awq" for AWQ-quantized models
     startup_timeout: 1200
     request_timeout: 300
     log_path: "logs/vllm_server.log"
