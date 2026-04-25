@@ -63,8 +63,9 @@ class HFClient:
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
 
+        # Newer transformers prefers `dtype` (`torch_dtype` is deprecated).
         kwargs = {
-            "torch_dtype": _DTYPES.get(self.config.torch_dtype, torch.bfloat16),
+            "dtype": _DTYPES.get(self.config.torch_dtype, torch.bfloat16),
             "trust_remote_code": self.config.trust_remote_code,
         }
         if self.config.device:
