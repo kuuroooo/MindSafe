@@ -8,10 +8,10 @@ __pycache__/
 venv/
 env/
 
-data/results/
-logs/
-checkpoints/
-*.jsonl
+# data/results/
+# logs/
+# checkpoints/
+# *.jsonl
 hf_cache/
 
 .env
