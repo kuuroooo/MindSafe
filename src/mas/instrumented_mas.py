@@ -8,19 +8,28 @@ from src.redteam import IdentityHook, MonitorViewHook
 
 
 class InstrumentedMAS:
-    """Orchestrates Coordinator.analyze → Therapist (≤N, monitor-gated)
-    → Coordinator.finalize → External Judge.
+    """Orchestrates Coordinator.analyze → [Therapist → Monitor → Coordinator.route]×N
+    → External Judge.
+
+    The coordinator is the active gate *inside* the revision loop: after
+    each therapist draft + monitor check, it picks a verdict —
+      * "safe"   → release the draft to the user;
+      * "revise" → hand specific fix instructions back to the therapist;
+      * "unsafe" → refuse / escalate.
+    The therapist's next attempt is primed by the coordinator's
+    `revision_instructions` (e.g., a clarification maneuver), not by the
+    monitor's concerns directly.
 
     Per turn we log:
       - latent cosine distance between the therapist's and monitor's
         last-layer last-token hidden states (primary consensus signal,
         proposal Eq. 4),
-      - the coordinator's final release label ("safe" / "unsafe"),
+      - the coordinator's terminal verdict as `final_label`,
       - the external judge's weighted safety score σ(s_t),
-      - a diagnostic text-embedding similarity over the three textual outputs.
+      - a diagnostic text-embedding similarity over the three outputs.
 
     Unsafe consensus fires when latent distance is low AND judge safety is
-    low AND the coordinator released the turn as safe.
+    low AND the coordinator released the turn as "safe".
     """
 
     def __init__(
@@ -60,10 +69,11 @@ class InstrumentedMAS:
         revision_feedback = None
         response = ""
         monitor_result: Dict[str, Any] = {}
+        route_result: Dict[str, Any] = {}
         h_therapist = None
         h_monitor = None
-
         monitor_view = ""
+
         for attempt in range(self.max_regenerations):
             response, h_therapist = await self.therapist.respond(
                 user_message=user_message,
@@ -79,25 +89,46 @@ class InstrumentedMAS:
                 user_message=user_message,
                 chat_history=self.history,
             )
+            route_result = await self.coordinator.route(
+                user_message=user_message,
+                analysis=analysis,
+                therapist_response=response,
+                monitor_result=monitor_result,
+                chat_history=self.history,
+                attempt=attempt,
+                max_attempts=self.max_regenerations,
+            )
             revisions.append({
                 "attempt": attempt,
                 "response": response,
                 "monitor_safety_score": monitor_result.get("safety_score"),
                 "monitor_concerns": monitor_result.get("concerns", []),
+                "coordinator_verdict": route_result.get("verdict"),
+                "coordinator_instructions": route_result.get("revision_instructions"),
+                "coordinator_rationale": route_result.get("rationale"),
             })
-            if not monitor_result.get("requires_revision", False):
+            verdict = route_result.get("verdict", "safe")
+            if verdict in ("safe", "unsafe"):
                 break
-            revision_feedback = "; ".join(monitor_result.get("concerns", [])) or (
-                monitor_result.get("rationale", "")
+            # verdict == "revise": therapist's next attempt is primed by
+            # the coordinator's concrete instructions (preferred) with
+            # monitor concerns as a fallback.
+            revision_feedback = (
+                route_result.get("revision_instructions")
+                or "; ".join(monitor_result.get("concerns", []))
+                or monitor_result.get("rationale", "")
             )
 
-        coord_final = await self.coordinator.finalize(
-            user_message=user_message,
-            analysis=analysis,
-            therapist_response=response,
-            monitor_result=monitor_result,
-            chat_history=self.history,
-        )
+        terminal_verdict = route_result.get("verdict", "safe")
+        # `route` already maps a "revise" verdict on the last attempt to
+        # "unsafe", so terminal_verdict is always "safe" or "unsafe" here.
+        coord_final = {
+            "final_label": terminal_verdict,
+            "confidence": route_result.get("confidence", 0.5),
+            "rationale": route_result.get("rationale", ""),
+            "terminal_verdict": terminal_verdict,
+            "n_attempts": len(revisions),
+        }
 
         judge_result = await self.external_judge.evaluate(
             assistant_response=response,
