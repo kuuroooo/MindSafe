@@ -16,7 +16,11 @@ mas_model:
   model_id: "meta-llama/Meta-Llama-3-8B-Instruct"
   device: "cuda:0"
   torch_dtype: "bfloat16"
-  use_flash_attention: true
+  # FlashAttention-2 needs `pip install flash-attn` (slow build, often
+  # fragile). PyTorch's SDPA backend is enabled by default and is ~10-20%
+  # slower on A100 bf16 — acceptable for the baseline. Flip to true if
+  # you've installed flash-attn into the venv.
+  use_flash_attention: false
   load_in_4bit: false
   load_in_8bit: false
   max_new_tokens: 1024
