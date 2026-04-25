@@ -30,8 +30,11 @@ judge_model:
   server:
     host: "localhost"
     port: 8000
-    gpu_ids: [1, 2, 3]
-    tensor_parallel_size: 3
+    # LLaMA-3.1-70B has 8 KV heads; vLLM requires num_kv_heads % TP == 0.
+    # TP=3 fails. AWQ-INT4 70B (~35GB) fits in 2×A100-40GB → use TP=2.
+    # GPU 3 stays idle (or available for the MAS triad if we ever colocate).
+    gpu_ids: [1, 2]
+    tensor_parallel_size: 2
     max_model_len: 8192
     dtype: "float16"
     gpu_memory_utilization: 0.90
