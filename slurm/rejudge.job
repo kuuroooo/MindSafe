@@ -1,0 +1,55 @@
+#!/bin/bash
+#SBATCH --job-name=mindsafe_rejudge
+#SBATCH --partition=gpu_a100
+#SBATCH --nodes=1
+#SBATCH --gpus=4
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=18
+#SBATCH --time=03:00:00
+#SBATCH --output=logs/rejudge_%j.out
+#SBATCH --error=logs/rejudge_%j.err
+#SBATCH --mail-type=BEGIN,END,FAIL
+#SBATCH --mail-user=k.c.j.wang@student.vu.nl
+
+# MindSafe rejudge — Lever 0 (sharpened judge over an existing sweep).
+# No MAS rerun: only the 70B AWQ judge runs, on GPUs 1-2 (TP=2). The MAS
+# triad isn't loaded, but we still ask for 4 GPUs to match the existing
+# config's gpu_ids: [1, 2] layout without changes.
+#
+# Submit with:
+#   SWEEP_DIR=data/results/baseline/sweep_20260425_165007 \
+#   sbatch slurm/rejudge.job
+
+set -e
+
+SWEEP_DIR="${SWEEP_DIR:-data/results/baseline/sweep_20260425_165007}"
+
+echo "=== Rejudge start: $(date) ==="
+echo "Job ID: $SLURM_JOB_ID   Node: $(hostname)"
+echo "Sweep:  $SWEEP_DIR"
+nvidia-smi --query-gpu=index,name,memory.total --format=csv
+
+module purge
+module load 2023
+module load Python/3.11.3-GCCcore-12.3.0
+
+source ~/mindsafe_env/bin/activate
+
+export HF_HOME=/scratch-shared/$USER/hf_cache
+export TRANSFORMERS_CACHE=$HF_HOME
+export HF_DATASETS_CACHE=$HF_HOME/datasets
+
+export VLLM_WORKER_MULTIPROC_METHOD=spawn
+export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
+export CUDA_VISIBLE_DEVICES=0,1,2,3
+
+mkdir -p logs
+
+cd ~/mindsafe
+
+python scripts/rejudge.py \
+    --sweep-dir "$SWEEP_DIR" \
+    --config configs/experiment_4gpu.yaml
+
+echo "=== Rejudge end: $(date) ==="
+echo "Inspect: $SWEEP_DIR/<arm>/results_v2.json"
