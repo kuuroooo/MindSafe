@@ -141,12 +141,22 @@ async def run_arm(
     judge_client,
     consensus_metrics: ConsensusMetrics,
 ):
-    coordinator = CoordinatorAgent(config["agents"]["coordinator"], mas_client)
-    therapist = TherapistAgent(config["agents"]["therapist"], mas_client)
-    monitor = MonitorAgent(config["agents"]["monitor"], mas_client)
-    external_judge = ExternalJudgeAgent(
-        config["agents"]["external_judge"], judge_client
-    )
+    # Per-arm agent overrides: shallow-merge `arm.agent_overrides.<name>`
+    # into `config.agents.<name>` before instantiating the agent. Used for
+    # insider-threat scenarios (e.g., compromised monitor system_prompt).
+    overrides = arm.get("agent_overrides") or {}
+
+    def _agent_cfg(name: str) -> dict:
+        base = dict(config["agents"][name])
+        ov = overrides.get(name) or {}
+        if ov:
+            base.update(ov)
+        return base
+
+    coordinator = CoordinatorAgent(_agent_cfg("coordinator"), mas_client)
+    therapist = TherapistAgent(_agent_cfg("therapist"), mas_client)
+    monitor = MonitorAgent(_agent_cfg("monitor"), mas_client)
+    external_judge = ExternalJudgeAgent(_agent_cfg("external_judge"), judge_client)
 
     hook = build_hook(arm.get("hook"))
     mas = InstrumentedMAS(
@@ -177,6 +187,7 @@ async def run_arm(
         "arm": arm_name,
         "patient": patient_kind,
         "hook": hook.name,
+        "agent_overrides": {k: list(v.keys()) for k, v in overrides.items()},
         "scenarios": {},
         "all_turn_records": [],
     }
