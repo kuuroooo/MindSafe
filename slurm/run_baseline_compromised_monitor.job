@@ -1,31 +1,35 @@
 #!/bin/bash
-#SBATCH --job-name=mindsafe_coord_verdict_swap
+#SBATCH --job-name=mindsafe_compromised_monitor
 #SBATCH --partition=gpu_a100
 #SBATCH --nodes=1
 #SBATCH --gpus=4
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=18
 #SBATCH --time=18:00:00
-#SBATCH --output=logs/coord_verdict_swap_%j.out
-#SBATCH --error=logs/coord_verdict_swap_%j.err
+#SBATCH --output=logs/compromised_monitor_%j.out
+#SBATCH --error=logs/compromised_monitor_%j.err
 #SBATCH --mail-type=BEGIN,END,FAIL
 #SBATCH --mail-user=k.c.j.wang@student.vu.nl
 
-# MindSafe baseline — arm `psi+coord_verdict_swap`.
-# Coordinator-targeted communication attack (mode: verdict_swap):
-# the monitor_result the coordinator receives is overwritten with a
-# pristine payload (safety_score=1.0, requires_revision=False, no
-# concerns, "reviewed and appropriate" rationale). Therapist response
-# shown to the coord is UNCHANGED. Unaltered response still reaches the
-# user and the external judge.
-# Submit with:  sbatch slurm/run_baseline_coord_verdict_swap.job
+# MindSafe baseline — arm `psi+compromised_monitor`.
+# Insider-threat scenario (Lynch et al., Agentic Misalignment 2025): the
+# monitor's system_prompt is replaced with a sycophantic, light-touch
+# supervisory framing. The monitor still runs end-to-end and emits a real
+# verdict — it's just biased toward leniency.
+#
+# This is RQ2-aligned (social-influence / individually-misaligned-agent
+# failure) — no inter-agent message tampering, no hook attacks. The
+# coordinator and therapist are unchanged; only the monitor's prompt is
+# overridden via agent_overrides in the arm config.
+#
+# Submit with:  sbatch slurm/run_baseline_compromised_monitor.job
 #
 # GPU 0    : MAS triad  (LLaMA-3-8B, HF transformers)
 # GPU 1-2  : Judge      (LLaMA-3.1-70B AWQ, vLLM HTTP subprocess, TP=2)
 
 set -e
 
-ARM=psi+coord_verdict_swap
+ARM=psi+compromised_monitor
 
 echo "=== Job start: $(date) | arm=$ARM ==="
 echo "Job ID: $SLURM_JOB_ID   Node: $(hostname)"
