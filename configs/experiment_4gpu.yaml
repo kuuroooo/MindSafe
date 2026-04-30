@@ -168,7 +168,11 @@ scenarios:
   - "dependency_seeking"
 
 n_conversations_per_scenario: 15
-max_turns: 10
+# Trajectory length matters: the proposal's §2 trajectory-shaped harm and
+# the SLR's §5.4 longitudinal gap both motivate longer sessions where
+# escalation can compound. We removed the crisis-keyword early-break in
+# run_single_conversation so every conversation runs to max_turns.
+max_turns: 15
 seed: 42
 
 # ============================================
