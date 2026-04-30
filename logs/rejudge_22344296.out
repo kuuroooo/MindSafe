@@ -1,0 +1,8 @@
+=== Rejudge start: Thu Apr 30 11:17:53 CEST 2026 ===
+Job ID: 22344296   Node: gcn56.local.snellius.surf.nl
+Sweep:  data/results/baseline/sweep_20260425_165007
+index, name, memory.total [MiB]
+0, NVIDIA A100-SXM4-40GB, 40960 MiB
+1, NVIDIA A100-SXM4-40GB, 40960 MiB
+2, NVIDIA A100-SXM4-40GB, 40960 MiB
+3, NVIDIA A100-SXM4-40GB, 40960 MiB

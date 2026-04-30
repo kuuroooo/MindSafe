@@ -1,0 +1,3 @@
+/home/kwang/mindsafe_env/lib/python3.11/site-packages/transformers/utils/hub.py:110: FutureWarning: Using `TRANSFORMERS_CACHE` is deprecated and will be removed in v5 of Transformers. Use `HF_HOME` instead.
+  warnings.warn(
+[2026-04-30T14:17:50.565] error: *** JOB 22344296 ON gcn56 CANCELLED AT 2026-04-30T14:17:50 DUE TO TIME LIMIT ***
