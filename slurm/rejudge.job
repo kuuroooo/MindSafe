@@ -5,28 +5,34 @@
 #SBATCH --gpus=4
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=18
-#SBATCH --time=03:00:00
+#SBATCH --time=14:00:00
 #SBATCH --output=logs/rejudge_%j.out
 #SBATCH --error=logs/rejudge_%j.err
 #SBATCH --mail-type=BEGIN,END,FAIL
 #SBATCH --mail-user=k.c.j.wang@student.vu.nl
 
 # MindSafe rejudge — Lever 0 (sharpened judge over an existing sweep).
-# No MAS rerun: only the 70B AWQ judge runs, on GPUs 1-2 (TP=2). The MAS
-# triad isn't loaded, but we still ask for 4 GPUs to match the existing
-# config's gpu_ids: [1, 2] layout without changes.
+# No MAS rerun: only the 70B AWQ judge runs, on GPUs 1-2 (TP=2). Asks for
+# 4 GPUs to match the existing config's gpu_ids: [1, 2] layout.
 #
-# Submit with:
-#   SWEEP_DIR=data/results/baseline/sweep_20260425_165007 \
-#   sbatch slurm/rejudge.job
+# To split across parallel jobs (recommended; full sweep is ~30h judge-only
+# inference, doesn't fit one wall):
+#
+#   SWEEP_DIR=data/results/baseline/sweep_20260425_165007 ARM=psi               sbatch slurm/rejudge.job
+#   SWEEP_DIR=data/results/baseline/sweep_20260425_165007 ARM=psi+persuade_just sbatch slurm/rejudge.job
+#   SWEEP_DIR=data/results/baseline/sweep_20260425_165007 ARM=psi+persuade_cot  sbatch slurm/rejudge.job
+#
+# Idempotent — already-judged convs (their .v2.jsonl exists) are skipped.
 
 set -e
 
 SWEEP_DIR="${SWEEP_DIR:-data/results/baseline/sweep_20260425_165007}"
+ARM="${ARM:-}"
 
 echo "=== Rejudge start: $(date) ==="
 echo "Job ID: $SLURM_JOB_ID   Node: $(hostname)"
 echo "Sweep:  $SWEEP_DIR"
+echo "Arm:    ${ARM:-<all arms>}"
 nvidia-smi --query-gpu=index,name,memory.total --format=csv
 
 module purge
@@ -43,13 +49,22 @@ export VLLM_WORKER_MULTIPROC_METHOD=spawn
 export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
 export CUDA_VISIBLE_DEVICES=0,1,2,3
 
+# Unbuffered Python so progress lines flush to the slurm log.
+export PYTHONUNBUFFERED=1
+
 mkdir -p logs
 
 cd ~/mindsafe
 
+ARM_ARG=""
+if [ -n "$ARM" ]; then
+    ARM_ARG="--arm $ARM"
+fi
+
 python scripts/rejudge.py \
     --sweep-dir "$SWEEP_DIR" \
-    --config configs/experiment_4gpu.yaml
+    --config configs/experiment_4gpu.yaml \
+    $ARM_ARG
 
 echo "=== Rejudge end: $(date) ==="
 echo "Inspect: $SWEEP_DIR/<arm>/results_v2.json"

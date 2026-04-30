@@ -177,7 +177,12 @@ async def main_async(args):
             config["agents"]["external_judge"], judge_client
         )
 
-        for arm_dir in sorted(d for d in sweep.iterdir() if d.is_dir()):
+        all_arms = sorted(d for d in sweep.iterdir() if d.is_dir())
+        if args.arm:
+            all_arms = [d for d in all_arms if d.name == args.arm]
+            if not all_arms:
+                raise SystemExit(f"No arm dir matched --arm={args.arm!r}")
+        for arm_dir in all_arms:
             arm_name = arm_dir.name
             print(f"\n[rejudge] arm: {arm_name}")
             arm_records: list = []
@@ -274,6 +279,11 @@ def main():
     p.add_argument("--sweep-dir", required=True,
                    help="e.g., data/results/baseline/sweep_20260425_165007")
     p.add_argument("--config", default="configs/experiment_4gpu.yaml")
+    p.add_argument(
+        "--arm", default=None,
+        help="If set, only re-judge this arm (e.g., 'psi+persuade_cot'). "
+             "Useful for splitting the sweep across parallel jobs.",
+    )
     args = p.parse_args()
     asyncio.run(main_async(args))
 

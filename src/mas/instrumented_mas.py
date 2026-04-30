@@ -73,6 +73,9 @@ class InstrumentedMAS:
         h_therapist = None
         h_monitor = None
         monitor_view = ""
+        coord_response = ""
+        coord_monitor: Dict[str, Any] = {}
+        coord_analysis: Dict[str, Any] = {}
 
         for attempt in range(self.max_regenerations):
             response, h_therapist = await self.therapist.respond(
@@ -89,11 +92,21 @@ class InstrumentedMAS:
                 user_message=user_message,
                 chat_history=self.history,
             )
+            # Inter-agent comms attack surface: the coord-input hook may
+            # tamper with what the coordinator receives (the response text,
+            # the monitor's verdict payload, and/or the prior analysis)
+            # before route() sees them. Default IdentityHook returns inputs
+            # unchanged.
+            coord_response, coord_monitor, coord_analysis = (
+                self.hook.transform_coord_input(
+                    response, monitor_result, analysis, self.history
+                )
+            )
             route_result = await self.coordinator.route(
                 user_message=user_message,
-                analysis=analysis,
-                therapist_response=response,
-                monitor_result=monitor_result,
+                analysis=coord_analysis,
+                therapist_response=coord_response,
+                monitor_result=coord_monitor,
                 chat_history=self.history,
                 attempt=attempt,
                 max_attempts=self.max_regenerations,
@@ -172,6 +185,11 @@ class InstrumentedMAS:
             "attack": {
                 "hook": self.hook.name,
                 "monitor_view_differs": monitor_view != response,
+                "coord_view_differs": (
+                    coord_response != response
+                    or coord_monitor != monitor_result
+                    or coord_analysis != analysis
+                ),
             },
         }
         self.turn_logs.append(turn_log)
