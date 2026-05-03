@@ -92,6 +92,75 @@ def _build_patient(
     raise ValueError(f"Unknown patient kind: {patient_kind}")
 
 
+def _turn_record(t: dict) -> dict:
+    """Lightweight per-turn record used for stratified arm-level metrics."""
+    return {
+        "turn": t.get("turn"),
+        "external_safety": t.get("external_safety"),
+        "latent_distance": t.get("latent_distance"),
+        "unsafe_consensus": t.get("unsafe_consensus"),
+        "coordinator_final_label": (
+            t.get("coordinator_final", {}).get("final_label")
+            if t.get("coordinator_final") else None
+        ),
+        "attack_hook": (t.get("attack") or {}).get("hook"),
+        "monitor_view_differs": (t.get("attack") or {}).get("monitor_view_differs"),
+    }
+
+
+def _summarize_turns(turns: list) -> dict:
+    """Conversation summary in the same shape InstrumentedMAS produces.
+
+    Used for skip-existing resume: when we load a conv_NNN.jsonl that's
+    already on disk, we still need a per-conv summary for arm aggregation.
+    """
+    if not turns:
+        return {"total_turns": 0}
+    distances = [t["latent_distance"] for t in turns if t.get("latent_distance") is not None]
+    safeties = [t["external_safety"] for t in turns if t.get("external_safety") is not None]
+    unsafe_events = sum(1 for t in turns if t.get("unsafe_consensus"))
+    coord_unsafe = sum(
+        1 for t in turns
+        if (t.get("coordinator_final") or {}).get("final_label") == "unsafe"
+    )
+    trend = "stable"
+    if len(safeties) >= 3:
+        mid = len(safeties) // 2
+        first = sum(safeties[:mid]) / max(1, mid)
+        second = sum(safeties[mid:]) / max(1, len(safeties) - mid)
+        delta = second - first
+        if delta < -0.1:
+            trend = "degrading"
+        elif delta > 0.1:
+            trend = "improving"
+    return {
+        "total_turns": len(turns),
+        "unsafe_consensus_events": unsafe_events,
+        "unsafe_consensus_rate": unsafe_events / len(turns),
+        "coordinator_unsafe_labels": coord_unsafe,
+        "mean_latent_distance": (sum(distances) / len(distances)) if distances else 0.0,
+        "mean_external_safety": (sum(safeties) / len(safeties)) if safeties else 0.0,
+        "trajectory_safety_trend": trend,
+    }
+
+
+def _load_existing_conv(conv_path: Path):
+    """Try to load a previously-completed conv JSONL.
+
+    Returns (summary, turn_records) on success, None if the file is
+    missing/empty/unparseable. Used by the skip-existing resume path.
+    """
+    try:
+        turns = [json.loads(line) for line in conv_path.read_text().splitlines() if line.strip()]
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not turns:
+        return None
+    summary = _summarize_turns(turns)
+    turn_records = [_turn_record(t) for t in turns]
+    return summary, turn_records
+
+
 async def run_single_conversation(mas, patient, max_turns: int):
     mas.reset()
     patient.turn_count = 0
@@ -114,22 +183,7 @@ async def run_single_conversation(mas, patient, max_turns: int):
             force_escalation=(turn > 2),
         )
 
-    # Snapshot per-turn records before the next reset — needed for
-    # stratified ASR / detection / FPR at the arm level.
-    turn_records = [
-        {
-            "turn": t.get("turn"),
-            "external_safety": t.get("external_safety"),
-            "latent_distance": t.get("latent_distance"),
-            "unsafe_consensus": t.get("unsafe_consensus"),
-            "coordinator_final_label": (
-                t.get("coordinator_final", {}).get("final_label")
-            ),
-            "attack_hook": (t.get("attack") or {}).get("hook"),
-            "monitor_view_differs": (t.get("attack") or {}).get("monitor_view_differs"),
-        }
-        for t in mas.turn_logs
-    ]
+    turn_records = [_turn_record(t) for t in mas.turn_logs]
     return mas.get_conversation_summary(), turn_records
 
 
@@ -173,6 +227,13 @@ async def run_arm(
     n_convs = config.get("n_conversations_per_scenario", 10)
     max_turns = config.get("max_turns", 10)
     seed = config.get("seed", 42)
+    # Per-conversation timeout — protects the arm against silent hangs
+    # in vLLM or HF generate (a degenerate prompt that never returns).
+    # If a conv exceeds this, we abort it, do NOT write its JSONL, log
+    # a "timeout" entry, and continue. The next resume will retry it.
+    conv_timeout_seconds = float(config.get("mas", {}).get(
+        "conversation_timeout_seconds", 2400
+    ))
 
     checkpoint_every = config.get("snellius", {}).get(
         "checkpoint_every_n_conversations", 5
@@ -209,6 +270,41 @@ async def run_arm(
             scen_log_dir.mkdir(parents=True, exist_ok=True)
 
             for conv_idx in range(n_convs):
+                conv_path = scen_log_dir / f"conv_{conv_idx:03d}.jsonl"
+
+                # --- Skip-existing: surgical resume ---------------------
+                # If a previous job already produced a complete JSONL for
+                # this (scenario, conv_idx), load it and skip re-running.
+                # Lets resubmits pick up exactly where the previous job
+                # left off without redoing successful convs.
+                if conv_path.exists():
+                    existing = _load_existing_conv(conv_path)
+                    if existing is not None:
+                        summary, turn_records = existing
+                        summary.update(
+                            conversation_idx=conv_idx,
+                            status="success",
+                            source="skipped_existing",
+                        )
+                        for r in turn_records:
+                            r["scenario"] = scenario_name
+                            r["conversation_idx"] = conv_idx
+                        arm_results["all_turn_records"].extend(turn_records)
+                        scen_results.append(summary)
+                        progress.update(scen_task, advance=1)
+                        progress.update(arm_task, advance=1)
+                        console.print(
+                            f"[dim]skip {scenario_name}/conv_{conv_idx:03d} "
+                            f"(already complete, {summary.get('total_turns', '?')} turns)[/dim]"
+                        )
+                        continue
+                    else:
+                        console.print(
+                            f"[yellow]existing {conv_path.name} unparseable — "
+                            f"redoing[/yellow]"
+                        )
+
+                # --- Run the conversation, with a timeout safety net ----
                 patient = _build_patient(
                     patient_kind,
                     mas_client,
@@ -216,17 +312,34 @@ async def run_arm(
                     conv_idx=conv_idx,
                     base_seed=seed,
                 )
+                wrote_log = False
                 try:
-                    summary, turn_records = await run_single_conversation(
-                        mas, patient, max_turns
+                    summary, turn_records = await asyncio.wait_for(
+                        run_single_conversation(mas, patient, max_turns),
+                        timeout=conv_timeout_seconds,
                     )
                     summary.update(conversation_idx=conv_idx, status="success")
                     for r in turn_records:
                         r["scenario"] = scenario_name
                         r["conversation_idx"] = conv_idx
                     arm_results["all_turn_records"].extend(turn_records)
+                    mas.export_logs(str(conv_path))
+                    wrote_log = True
+                except asyncio.TimeoutError:
+                    console.print(
+                        f"[red]{arm_name}/{scenario_name}/conv {conv_idx}: "
+                        f"timeout after {conv_timeout_seconds:.0f}s — aborted; "
+                        f"will retry on next resubmit[/red]"
+                    )
+                    summary = {
+                        "conversation_idx": conv_idx,
+                        "status": "timeout",
+                        "error": f"conversation exceeded {conv_timeout_seconds:.0f}s",
+                    }
                 except Exception as e:
-                    console.print(f"[red]{arm_name}/{scenario_name}/conv {conv_idx} error: {e}[/red]")
+                    console.print(
+                        f"[red]{arm_name}/{scenario_name}/conv {conv_idx} error: {e}[/red]"
+                    )
                     summary = {
                         "conversation_idx": conv_idx,
                         "status": "error",
@@ -234,7 +347,6 @@ async def run_arm(
                     }
 
                 scen_results.append(summary)
-                mas.export_logs(str(scen_log_dir / f"conv_{conv_idx:03d}.jsonl"))
 
                 progress.update(scen_task, advance=1)
                 progress.update(arm_task, advance=1)

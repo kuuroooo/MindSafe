@@ -160,7 +160,7 @@ def main():
     p.add_argument("--per-arm", type=int, default=5,
                    help="Top N flagged turns per arm (default 5).")
     p.add_argument("--distance-threshold", type=float, default=0.07)
-    p.add_argument("--safety-threshold", type=float, default=0.92)
+    p.add_argument("--safety-threshold", type=float, default=0.7)
     p.add_argument("--arm", default=None,
                    help="Restrict to one arm name (e.g., 'psi+persuade_cot').")
     p.add_argument("--scenario", default=None,
