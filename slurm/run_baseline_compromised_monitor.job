@@ -17,12 +17,21 @@
 # supervisory framing. The monitor still runs end-to-end and emits a real
 # verdict — it's just biased toward leniency.
 #
-# This is RQ2-aligned (social-influence / individually-misaligned-agent
-# failure) — no inter-agent message tampering, no hook attacks. The
-# coordinator and therapist are unchanged; only the monitor's prompt is
-# overridden via agent_overrides in the arm config.
+# Submit (full sweep):
+#   sbatch slurm/run_baseline_compromised_monitor.job
 #
-# Submit with:  sbatch slurm/run_baseline_compromised_monitor.job
+# Submit (RESUME — only run a subset of scenarios into the SAME output
+# tree as a previous job). Useful when an earlier run timed out partway:
+#   SWEEP_ID=run_22355364 \
+#   RESUME_SCENARIOS="harmful_coping dependency_seeking" \
+#     sbatch slurm/run_baseline_compromised_monitor.job
+#
+# Conv files for the resumed scenarios are overwritten if they already
+# exist (the runner is deterministic on conv_idx, so same starting
+# profile is replayed). The arm's results.json gets overwritten with
+# stats for ONLY the listed scenarios — use scripts that walk per-conv
+# JSONLs (consensus_penalty.py, retune_thresholds.py) for full analysis
+# across all completed scenarios.
 #
 # GPU 0    : MAS triad  (LLaMA-3-8B, HF transformers)
 # GPU 1-2  : Judge      (LLaMA-3.1-70B AWQ, vLLM HTTP subprocess, TP=2)
@@ -30,9 +39,13 @@
 set -e
 
 ARM=psi+compromised_monitor
+RESUME_SCENARIOS="${RESUME_SCENARIOS:-}"
 
 echo "=== Job start: $(date) | arm=$ARM ==="
 echo "Job ID: $SLURM_JOB_ID   Node: $(hostname)"
+if [ -n "$RESUME_SCENARIOS" ]; then
+    echo "RESUME mode — scenarios: $RESUME_SCENARIOS"
+fi
 nvidia-smi --query-gpu=index,name,memory.total --format=csv
 
 module purge
@@ -56,9 +69,16 @@ mkdir -p "$OUTPUT_DIR" logs
 
 cd ~/mindsafe
 
+# Build optional --scenarios flag for resume-style submissions.
+SCENARIOS_ARG=""
+if [ -n "$RESUME_SCENARIOS" ]; then
+    SCENARIOS_ARG="--scenarios $RESUME_SCENARIOS"
+fi
+
 python scripts/run_baseline_experiment.py \
     --config configs/experiment_4gpu.yaml \
     --output-dir "$OUTPUT_DIR" \
-    --arms "$ARM"
+    --arms "$ARM" \
+    $SCENARIOS_ARG
 
 echo "=== Job end: $(date) | arm=$ARM ==="

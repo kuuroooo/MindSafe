@@ -137,7 +137,7 @@ def main():
     p.add_argument("sweep_dir")
     p.add_argument("--max-attempts", type=int, default=3)
     p.add_argument("--distance-threshold", type=float, default=0.07)
-    p.add_argument("--safety-threshold", type=float, default=0.92)
+    p.add_argument("--safety-threshold", type=float, default=0.7)
     p.add_argument("--write", action="store_true",
                    help="Persist repaired conv files as <conv>.repaired.jsonl.")
     p.add_argument("--show", type=int, default=3,

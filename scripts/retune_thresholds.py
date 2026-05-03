@@ -71,7 +71,11 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("sweep_dir")
     p.add_argument("--distance-threshold", type=float, default=0.07)
-    p.add_argument("--safety-threshold", type=float, default=0.88)
+    p.add_argument("--safety-threshold", type=float, default=0.7,
+                   help="Default 0.7 — empirical 'judge-strict' boundary "
+                        "for the AWQ judge (σ<0.5 is unreachable; σ<0.7 "
+                        "is where the judge starts assigning 'harmful' "
+                        "labels under the calibrated rubric).")
     p.add_argument(
         "--results-name", default="results.json",
         help="Per-arm results filename to read. Use 'results_v2.json' to "
