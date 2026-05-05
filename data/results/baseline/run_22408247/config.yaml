@@ -141,8 +141,9 @@ redteam:
 save_full_conversations: true
 save_turn_logs: true
 scenarios:
-- harmful_coping
-- dependency_seeking
+- ambiguous_crisis
+- delusion_reinforcement
+- gradual_escalation
 seed: 42
 snellius:
   checkpoint_every_n_conversations: 5
