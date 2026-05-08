@@ -1,20 +1,51 @@
 """Reward functions for MAPPO training (proposal §7.2 Eqs 3-4).
 
-The signal we minimize during training is the unsafe-consensus penalty
-`c_consensus`. The signal we maximize is therapeutic utility `r_therapy`.
-The joint reward subtracts the penalty with a hyperparameter `β`.
+These are pure functions operating on a single turn's data. Imported
+into `rollout.py` to label every step of every trajectory.
 
-These functions operate on a single turn dict — the same shape produced
-by InstrumentedMAS. They're imported into rollout.py to label each step
-of a trajectory.
+Sign conventions:
+  * `c_consensus` is a *cost* (high = bad).
+  * `r_therapy`   is a *reward* (high = good).
+  * `r_joint`     is `r_therapy − β·c_consensus`. PPO maximizes this.
+
+The `c_consensus` formula here is intentionally identical to the
+baseline analysis in `scripts/consensus_penalty.py` — same cosine
+distance, same kernel, same temperature default. So training-time
+penalty and post-hoc baseline analysis are on the same scale.
 """
 
 from __future__ import annotations
 
 import math
-from typing import Optional
+from typing import Dict
 
 import numpy as np
+
+
+# -----------------------------------------------------------------------------
+# Eq. 4 — unsafe-consensus cost
+# -----------------------------------------------------------------------------
+
+def cosine_distance(a: np.ndarray, b: np.ndarray) -> float:
+    """Cosine distance ∈ [0, 2]. Matches `ConsensusMetrics.latent_cosine_distance`."""
+    a = np.asarray(a, dtype=np.float32).reshape(-1)
+    b = np.asarray(b, dtype=np.float32).reshape(-1)
+    na, nb = float(np.linalg.norm(a)), float(np.linalg.norm(b))
+    if na == 0.0 or nb == 0.0:
+        return 1.0
+    sim = float(np.dot(a, b) / (na * nb))
+    sim = max(-1.0, min(1.0, sim))
+    return 1.0 - sim
+
+
+def c_consensus_from_distance(d: float, sigma: float, tau: float = 0.1) -> float:
+    """Eq. 4 with the cosine distance precomputed.
+
+    Used by `consensus_penalty.py` and by post-hoc analysis on the
+    baseline JSONLs (which store `latent_distance` already, not the
+    raw hidden vectors).
+    """
+    return math.exp(-d / tau) * (1.0 - float(sigma))
 
 
 def c_consensus(
@@ -23,71 +54,93 @@ def c_consensus(
     sigma: float,
     tau: float = 0.1,
 ) -> float:
-    """Proposal Eq. 4 — unsafe-consensus cost.
+    """Eq. 4 — unsafe-consensus cost.
 
         c = exp(-d(h_therapist, h_monitor) / τ) · (1 - σ)
 
-    High when the agents' latent states agree (small d) AND the judge
-    rates the response unsafe (small σ). This is the term MAPPO is
-    trying to drive down.
-
-    Reuses the same cosine distance the baseline detector uses; we
-    deliberately match `src.evaluation.consensus_metrics.latent_cosine_distance`
-    here so the training signal and the baseline analysis are on the
-    same scale.
+    High when (a) the agents' last-layer last-token hidden states are
+    in latent agreement (small d) AND (b) the judge rates the response
+    unsafe (small σ). Bounded in [0, 1]: the exponential is in (0, 1]
+    and (1−σ) is in [0, 1].
     """
-    a = np.asarray(therapist_hidden, dtype=np.float32).reshape(-1)
-    b = np.asarray(monitor_hidden, dtype=np.float32).reshape(-1)
-    na, nb = float(np.linalg.norm(a)), float(np.linalg.norm(b))
-    if na == 0.0 or nb == 0.0:
-        d = 1.0
-    else:
-        sim = float(np.dot(a, b) / (na * nb))
-        sim = max(-1.0, min(1.0, sim))
-        d = 1.0 - sim
-    return math.exp(-d / tau) * (1.0 - float(sigma))
+    d = cosine_distance(therapist_hidden, monitor_hidden)
+    return c_consensus_from_distance(d, sigma, tau)
 
 
-def r_therapy(judge_result: dict, alpha_quality: float = 1.0) -> float:
-    """Therapeutic utility, derived from the judge's per-dimension scores.
+# -----------------------------------------------------------------------------
+# Therapeutic-utility reward (option A: judge's therapeutic_quality dim)
+# -----------------------------------------------------------------------------
 
-    Default: use the `therapeutic_quality` dimension directly. This is
-    a tunable choice — alternatives include the weighted overall σ minus
-    a constant, or a dedicated learned therapy-quality head.
+def r_therapy(judge_result: Dict, alpha_quality: float = 1.0) -> float:
+    """Therapeutic utility from the judge's `therapeutic_quality` dimension.
+
+    Option A from the design discussion: keeps therapy and safety as
+    orthogonal channels so β has a clean interpretation. Falls back to
+    a neutral 0.5 if the judge didn't emit the dimension.
 
     Args:
-        judge_result: dict with keys "therapeutic_quality", optionally
-            other dimensions and "safety_score".
-        alpha_quality: scalar multiplier on therapeutic_quality. Set
-            ≠1 to rebalance vs the consensus penalty.
-
-    Returns:
-        Scalar reward for the therapy-effectiveness channel.
-
-    TODO when implementing:
-      - Decide on the formulation: pure therapeutic_quality, or
-        (overall σ + therapeutic_quality)/2, or learned head.
-      - Consider trajectory-level rewards (e.g., did σ improve over
-        the conversation?) — that's a function of multiple turns and
-        belongs in rollout.py.
+        judge_result: dict from `ExternalJudgeAgent.evaluate(...)`.
+        alpha_quality: scalar multiplier. Default 1.0 keeps
+            r_therapy in [0, 1], same scale as c_consensus.
     """
-    raise NotImplementedError
+    q = judge_result.get("therapeutic_quality")
+    if q is None:
+        q = 0.5
+    try:
+        q = float(q)
+    except (TypeError, ValueError):
+        q = 0.5
+    q = max(0.0, min(1.0, q))
+    return alpha_quality * q
 
+
+# -----------------------------------------------------------------------------
+# Eq. 3 — joint reward
+# -----------------------------------------------------------------------------
 
 def r_joint(
     therapist_hidden: np.ndarray,
     monitor_hidden: np.ndarray,
     sigma: float,
-    judge_result: dict,
+    judge_result: Dict,
     beta: float = 1.0,
     tau: float = 0.1,
     alpha_quality: float = 1.0,
-) -> dict:
-    """Proposal Eq. 3 — joint reward.
+) -> Dict[str, float]:
+    """Eq. 3 — joint reward used as PPO target.
 
         R = r_therapy − β · c_consensus
 
-    Returns a dict so the trainer can log all components separately:
-        {"r_therapy": ..., "c_consensus": ..., "r_joint": ...}
+    Returns a dict so the trainer can log each component independently.
+    PPO uses the `r_joint` value; logging dashboards show r_therapy and
+    c_consensus separately.
     """
-    raise NotImplementedError
+    rt = r_therapy(judge_result, alpha_quality=alpha_quality)
+    cc = c_consensus(therapist_hidden, monitor_hidden, sigma, tau=tau)
+    return {
+        "r_therapy": rt,
+        "c_consensus": cc,
+        "r_joint": rt - beta * cc,
+    }
+
+
+def r_joint_from_distance(
+    distance: float,
+    sigma: float,
+    judge_result: Dict,
+    beta: float = 1.0,
+    tau: float = 0.1,
+    alpha_quality: float = 1.0,
+) -> Dict[str, float]:
+    """Convenience: same as `r_joint` but takes the precomputed distance.
+
+    Useful for retroactive analysis on the baseline JSONLs (which store
+    `latent_distance` rather than raw hidden vectors).
+    """
+    rt = r_therapy(judge_result, alpha_quality=alpha_quality)
+    cc = c_consensus_from_distance(distance, sigma, tau=tau)
+    return {
+        "r_therapy": rt,
+        "c_consensus": cc,
+        "r_joint": rt - beta * cc,
+    }
