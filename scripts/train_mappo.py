@@ -209,11 +209,54 @@ def main():
                         help="Checkpoint dir to resume from.")
     parser.add_argument("--total-episodes", type=int, default=None,
                         help="Override config.mappo.total_episodes.")
+    parser.add_argument(
+        "--scenarios", nargs="+", default=None,
+        help="Override config.scenarios. Useful for smoke tests "
+             "(--scenarios ambiguous_crisis).",
+    )
+    parser.add_argument(
+        "--n-eps-per-scen-per-update", type=int, default=None,
+        help="Override config.mappo.n_episodes_per_scenario_per_update.",
+    )
+    parser.add_argument(
+        "--max-turns", type=int, default=None,
+        help="Override config.max_turns. Cuts episode length for smoke tests.",
+    )
+    parser.add_argument(
+        "--save-every", type=int, default=None,
+        help="Override config.mappo.save_every.",
+    )
+    parser.add_argument(
+        "--eval-every", type=int, default=None,
+        help="Override config.mappo.eval_every.",
+    )
     args = parser.parse_args()
 
     config = load_config(args.config)
-    if args.total_episodes:
+    if args.total_episodes is not None:
         config["mappo"]["total_episodes"] = args.total_episodes
+    if args.scenarios:
+        config["scenarios"] = args.scenarios
+    if args.n_eps_per_scen_per_update is not None:
+        config["mappo"]["n_episodes_per_scenario_per_update"] = args.n_eps_per_scen_per_update
+    if args.max_turns is not None:
+        config["max_turns"] = args.max_turns
+    if args.save_every is not None:
+        config["mappo"]["save_every"] = args.save_every
+    if args.eval_every is not None:
+        config["mappo"]["eval_every"] = args.eval_every
+
+    # Sanity-check the loop will actually run at least once
+    eps_per_update = (
+        config["mappo"]["n_episodes_per_scenario_per_update"]
+        * len(config["scenarios"])
+    )
+    if config["mappo"]["total_episodes"] < eps_per_update:
+        raise SystemExit(
+            f"total_episodes ({config['mappo']['total_episodes']}) is smaller "
+            f"than one update batch ({eps_per_update} = "
+            f"n_eps_per_scen_per_update * n_scenarios). Reduce one or both."
+        )
 
     out_dir = Path(args.output_dir or
                    f"data/results/mappo/run_{datetime.now():%Y%m%d_%H%M%S}")
@@ -223,6 +266,9 @@ def main():
         yaml.dump(config, f)
 
     print(f"[mappo] Output dir: {out_dir}")
+    print(f"[mappo] Scenarios: {config['scenarios']}")
+    print(f"[mappo] eps/update: {eps_per_update} | "
+          f"n_updates: {config['mappo']['total_episodes'] // eps_per_update}")
     asyncio.run(main_async(config, out_dir, args))
 
 

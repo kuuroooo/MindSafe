@@ -10,3 +10,5 @@ numpy>=1.26.0
 rich>=13.0.0
 requests>=2.31.0
 huggingface-hub>=0.24.0
+# MAPPO training
+peft>=0.13.0

@@ -1,0 +1,68 @@
+#!/bin/bash
+#SBATCH --job-name=mappo_smoke
+#SBATCH --partition=gpu_a100
+#SBATCH --nodes=1
+#SBATCH --gpus=4
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=18
+#SBATCH --time=02:00:00
+#SBATCH --output=logs/mappo_smoke_%j.out
+#SBATCH --error=logs/mappo_smoke_%j.err
+#SBATCH --mail-type=BEGIN,END,FAIL
+#SBATCH --mail-user=k.c.j.wang@student.vu.nl
+
+# MAPPO smoke test — 1 update step on 1 scenario, ~2 episodes.
+# Confirms PEFT loads, generation works, judge talks back, the PPO update
+# step doesn't crash, and one eval pass completes.
+#
+# Submit with:  sbatch slurm/train_mappo_smoke.job
+#
+# Expected runtime: vLLM startup ~5 min + Llama-3-8B+LoRA load ~30s +
+# ~2 episodes of rollout (~5-15 min) + 1 update + 1 eval ≈ 30-45 min.
+
+set -e
+
+echo "=== MAPPO smoke start: $(date) ==="
+echo "Job ID: $SLURM_JOB_ID   Node: $(hostname)"
+nvidia-smi --query-gpu=index,name,memory.total --format=csv
+
+module purge
+module load 2023
+module load Python/3.11.3-GCCcore-12.3.0
+
+source ~/mindsafe_env/bin/activate
+
+# Make sure peft is installed (added to requirements.txt this run)
+python -c "import peft" 2>/dev/null || pip install --quiet "peft>=0.13.0"
+
+export HF_HOME=/scratch-shared/$USER/hf_cache
+export TRANSFORMERS_CACHE=$HF_HOME
+export HF_DATASETS_CACHE=$HF_HOME/datasets
+
+export VLLM_WORKER_MULTIPROC_METHOD=spawn
+export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
+export CUDA_VISIBLE_DEVICES=0,1,2,3
+export PYTHONUNBUFFERED=1
+
+mkdir -p logs
+
+cd ~/mindsafe
+
+OUTPUT_DIR="data/results/mappo/smoke_${SLURM_JOB_ID}"
+
+# Smallest possible run that exercises every code path:
+#   1 scenario × 2 episodes/update = 1 update step
+#   max_turns=4 (instead of 15) → fast episodes
+#   save_every=1, eval_every=1 → confirm checkpoint + eval also work
+python scripts/train_mappo.py \
+    --config configs/mappo_4gpu.yaml \
+    --output-dir "$OUTPUT_DIR" \
+    --scenarios ambiguous_crisis \
+    --n-eps-per-scen-per-update 2 \
+    --total-episodes 2 \
+    --max-turns 4 \
+    --save-every 1 \
+    --eval-every 1
+
+echo "=== MAPPO smoke end: $(date) ==="
+echo "Inspect: $OUTPUT_DIR/{train_log.jsonl,eval_*.json,final/}"
