@@ -11,19 +11,27 @@ The package is layered on top of the frozen baseline (`src.agents`,
 """
 
 from .policy import LoRAAgentPolicy, MultiAgentPolicy
-from .reward import c_consensus, r_joint, r_therapy
-from .rollout import RolloutBuffer, collect_rollouts
-from .trainer import MAPPOTrainer
+from .reward import c_consensus, c_consensus_from_distance, r_joint, r_therapy
+from .rollout import RolloutBuffer, collect_rollouts, compute_advantages
+from .trainer import MAPPOConfig, MAPPOTrainer
 from .value_net import CentralizedValueNet
 
 __all__ = [
+    # policy
     "LoRAAgentPolicy",
     "MultiAgentPolicy",
+    # rollout
     "RolloutBuffer",
     "collect_rollouts",
+    "compute_advantages",
+    # trainer
     "MAPPOTrainer",
+    "MAPPOConfig",
+    # value net
     "CentralizedValueNet",
+    # reward
     "c_consensus",
+    "c_consensus_from_distance",
     "r_joint",
     "r_therapy",
 ]
