@@ -35,12 +35,20 @@ judge_model:
     startup_timeout: 1200
     request_timeout: 300
     log_path: "logs/vllm_server.log"
-    # --disable-custom-all-reduce: fall back to NCCL for cross-GPU reductions.
-    #   vLLM's custom kernel needs full peer-access between TP GPUs and fails
-    #   with "Cuda error custom_all_reduce.cuh:455 invalid argument" on some
-    #   Snellius nodes whose GPU topology doesn't support it. NCCL works
-    #   everywhere; ~5-10% throughput loss on judge calls.
-    extra_args: ["--disable-custom-all-reduce"]
+    # vLLM stability hardening for the 70B AWQ judge under load:
+    #
+    #  --disable-custom-all-reduce: fall back to NCCL for cross-GPU reductions.
+    #     vLLM's custom kernel needs full peer-access between TP GPUs and fails
+    #     with "Cuda error custom_all_reduce.cuh:455 invalid argument" on some
+    #     Snellius nodes whose GPU topology doesn't support it. NCCL works
+    #     everywhere.
+    #
+    #  --enforce-eager: skip torch.compile + CUDA-graph capture. The captured
+    #     graph + AWQ + FlashAttention combo intermittently throws
+    #     "CUDA error: illegal memory access" mid-inference on long prompts
+    #     (esp. monitor's CoT-style ~2k-token prompts in our pipeline).
+    #     Eager execution is ~10-20% slower per call but doesn't crash.
+    extra_args: ["--disable-custom-all-reduce", "--enforce-eager"]
 
 embedding_model: "sentence-transformers/all-MiniLM-L6-v2"
 
