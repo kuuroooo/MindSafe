@@ -1,0 +1,94 @@
+#!/bin/bash
+#SBATCH --job-name=mindsafe_mappo
+#SBATCH --partition=gpu_a100
+#SBATCH --nodes=1
+#SBATCH --gpus=4
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=18
+#SBATCH --time=3-00:00:00
+#SBATCH --output=logs/mappo_%j.out
+#SBATCH --error=logs/mappo_%j.err
+#SBATCH --mail-type=BEGIN,END,FAIL
+#SBATCH --mail-user=k.c.j.wang@student.vu.nl
+
+# MindSafe MAPPO training — full run.
+#
+# Wall: 5 days (120h). If Snellius rejects with "invalid time limit",
+# dial down: --time=24:00:00, then 48:00:00, etc.
+#
+# GPU 0    : Trainable Llama-3-8B + 3 LoRA adapters + value head + patient sim
+# GPU 1-2  : Frozen judge (LLaMA-3.1-70B AWQ via vLLM, TP=2)
+# GPU 3    : (idle — kept for symmetry with baseline gpu_ids)
+#
+# Submit (full training):
+#   sbatch slurm/train_mappo.job
+#
+# Submit (resume from a previous job's checkpoint):
+#   sbatch --export=ALL,RESUME_FROM=data/results/mappo/run_<JOBID>/ckpt_00299 \
+#       slurm/train_mappo.job
+#
+# Submit with override on number of episodes (e.g., short pilot):
+#   sbatch --export=ALL,TOTAL_EPISODES=4000 slurm/train_mappo.job
+#
+# Submit pinning the output dir (so multiple resume jobs share a tree):
+#   sbatch --export=ALL,OUTPUT_DIR=data/results/mappo/sweep_pilot \
+#       slurm/train_mappo.job
+
+set -e
+
+TOTAL_EPISODES="${TOTAL_EPISODES:-}"
+RESUME_FROM="${RESUME_FROM:-}"
+OUTPUT_DIR_OVERRIDE="${OUTPUT_DIR:-}"
+
+echo "=== MAPPO start: $(date) ==="
+echo "Job ID: $SLURM_JOB_ID   Node: $(hostname)"
+[ -n "$RESUME_FROM" ]   && echo "Resuming from: $RESUME_FROM"
+[ -n "$TOTAL_EPISODES" ] && echo "Total episodes override: $TOTAL_EPISODES"
+nvidia-smi --query-gpu=index,name,memory.total --format=csv
+
+module purge
+module load 2023
+module load Python/3.11.3-GCCcore-12.3.0
+
+source ~/mindsafe_env/bin/activate
+
+# Make sure peft is installed (matches smoke job behavior)
+python -c "import peft" 2>/dev/null || pip install --quiet "peft>=0.13.0"
+
+export HF_HOME=/scratch-shared/$USER/hf_cache
+export TRANSFORMERS_CACHE=$HF_HOME
+export HF_DATASETS_CACHE=$HF_HOME/datasets
+
+export VLLM_WORKER_MULTIPROC_METHOD=spawn
+# expandable_segments cuts fragmentation OOMs on the trainable base model
+# + LoRA + activation graph (per the OOM message's recommendation).
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+export CUDA_VISIBLE_DEVICES=0,1,2,3
+export PYTHONUNBUFFERED=1
+
+# Default output dir is per-job; override OUTPUT_DIR to chain resumes
+# into one tree.
+if [ -n "$OUTPUT_DIR_OVERRIDE" ]; then
+    OUTPUT_DIR="$OUTPUT_DIR_OVERRIDE"
+else
+    OUTPUT_DIR="data/results/mappo/run_${SLURM_JOB_ID}"
+fi
+mkdir -p "$OUTPUT_DIR" logs
+
+cd ~/mindsafe
+
+EXTRA_ARGS=""
+if [ -n "$TOTAL_EPISODES" ]; then
+    EXTRA_ARGS="$EXTRA_ARGS --total-episodes $TOTAL_EPISODES"
+fi
+if [ -n "$RESUME_FROM" ]; then
+    EXTRA_ARGS="$EXTRA_ARGS --resume-from $RESUME_FROM"
+fi
+
+python scripts/train_mappo.py \
+    --config configs/mappo_4gpu.yaml \
+    --output-dir "$OUTPUT_DIR" \
+    $EXTRA_ARGS
+
+echo "=== MAPPO end: $(date) ==="
+echo "Output: $OUTPUT_DIR"
