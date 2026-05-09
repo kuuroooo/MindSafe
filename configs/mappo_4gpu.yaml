@@ -147,7 +147,11 @@ mappo:
   ppo:
     clip_eps: 0.2
     n_epochs_per_update: 4
-    minibatch_size: 32
+    # Memory: with gradient checkpointing + per-step backprop in trainer.py,
+    # peak activation mem is bounded to ONE forward graph at a time. 4 turns/
+    # minibatch keeps headroom on a 40 GB A100 for Llama-3-8B + 3 LoRAs.
+    # Bump to 8 once you've confirmed a smoke run fits.
+    minibatch_size: 4
     lr_policy: 1.0e-5
     lr_value:  1.0e-4
     grad_clip: 1.0

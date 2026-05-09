@@ -293,6 +293,17 @@ class MultiAgentPolicy:
         for name in self.AGENT_NAMES[1:]:
             self.base_model.add_adapter(name, self._make_lora_config())
 
+        # Memory: gradient checkpointing trades ~30% compute for ~3× activation
+        # memory savings. Required for Llama-3-8B + LoRA + PPO on a single
+        # 40GB A100. PEFT requires `enable_input_require_grads` so gradient
+        # propagates through the embedding layer.
+        if hasattr(self.base_model, "gradient_checkpointing_enable"):
+            self.base_model.gradient_checkpointing_enable(
+                gradient_checkpointing_kwargs={"use_reentrant": False},
+            )
+        if hasattr(self.base_model, "enable_input_require_grads"):
+            self.base_model.enable_input_require_grads()
+
         # ---- per-agent policy wrappers ----
         self.coordinator = self._make_agent("coordinator")
         self.therapist = self._make_agent("therapist")

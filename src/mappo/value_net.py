@@ -128,8 +128,9 @@ class CentralizedValueNet:
         return (summed / denom).detach()
 
     def __call__(self, global_state_text: str) -> float:
-        """V(s) for a single string."""
-        return float(self.batched([global_state_text])[0])
+        """V(s) for a single string. Inference path — no grad needed."""
+        with torch.no_grad():
+            return float(self.batched([global_state_text])[0].detach())
 
     def batched(self, global_states: List[str]) -> torch.Tensor:
         """V(s) for a batch — used in the trainer's value loss.

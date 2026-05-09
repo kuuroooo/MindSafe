@@ -123,26 +123,30 @@ class MAPPOTrainer:
                 batch_ret = rets[idxs]
 
                 # ---- per-agent policy losses (centralized advantage) ----
+                # Memory-aware: backprop after EACH per-step forward to free
+                # the activation graph. Gradients accumulate across all 4
+                # roles × all minibatch steps before optimizer.step().
                 self.policy_optim.zero_grad(set_to_none=True)
-                total_policy_loss = torch.zeros((), device=self.policy.device)
+                # Normalize so the accumulated gradient has the same magnitude
+                # as if we had averaged the loss across all units.
+                n_units = max(1, len(batch_steps)) * len(_ROLE_TO_AGENT)
                 for role, agent_name in _ROLE_TO_AGENT.items():
                     agent = getattr(self.policy, agent_name)
-                    pl, kl_, cf, ct = self._policy_loss_for_role(
+                    pl_val, kl_, cf, ct = self._policy_loss_for_role(
                         agent, batch_steps, batch_adv, role,
+                        n_units=n_units,
                     )
-                    total_policy_loss = total_policy_loss + pl
-                    log[f"policy_loss/{role}"] += float(pl.detach().cpu())
-                    log[f"kl/{role}"] += float(kl_)
+                    log[f"policy_loss/{role}"] += pl_val
+                    log[f"kl/{role}"] += kl_
                     clip_count += cf
                     clip_total += ct
 
-                total_policy_loss.backward()
                 torch.nn.utils.clip_grad_norm_(
                     list(self.policy.trainable_parameters()), self.cfg.grad_clip
                 )
                 self.policy_optim.step()
 
-                # ---- value loss (separate optimizer) -------------------
+                # ---- value loss (separate optimizer, separate graph) ---
                 self.value_optim.zero_grad(set_to_none=True)
                 gst_batch = [s.global_state_text for s in batch_steps]
                 v_pred = self.value_net.batched(gst_batch)            # [B]
@@ -169,17 +173,24 @@ class MAPPOTrainer:
     # Internal: per-role policy loss for one minibatch
     # -----------------------------------------------------------------
 
-    def _policy_loss_for_role(self, agent, batch_steps, batch_adv, role):
-        """Sum the clipped surrogate over all turns in this minibatch
-        for a single role's action records.
+    def _policy_loss_for_role(self, agent, batch_steps, batch_adv, role, n_units):
+        """Per-step backward to keep peak activation memory bounded to ONE forward graph.
 
-        Each turn has one action record per role; we recompute log-probs
-        under the CURRENT adapter, compare to the old (sample-time) ones,
-        and apply the PPO-clip objective.
+        For each step in the minibatch:
+          - recompute log-probs under the current adapter (forward, with grad)
+          - compute the clipped surrogate
+          - backward immediately, accumulating into adapter parameter grads
+          - free the graph
+
+        Returns scalar floats only — no live grad tensors leak out.
+        Gradients are cleared by the caller via `policy_optim.zero_grad`
+        before this function is invoked, and the optimizer step happens
+        after all 4 roles have accumulated.
         """
-        cum_loss = torch.zeros((), device=self.policy.device)
+        cum_loss_value = 0.0
         kl_acc, n_tok_acc = 0.0, 0
         clipped, total = 0, 0
+        n_seen = 0
 
         for step, A_scalar in zip(batch_steps, batch_adv):
             act = step.actions.get(role)
@@ -190,26 +201,30 @@ class MAPPOTrainer:
             old_lp       = torch.from_numpy(act["old_log_probs"]).float().to(self.policy.device)
 
             new_lp = agent.compute_log_probs(prompt_ids, response_ids)  # [n_resp], grad enabled
-            # Token-mean (could also be sum; mean keeps loss scale token-count invariant).
             ratio = torch.exp(new_lp - old_lp.detach())
             A = A_scalar.detach().to(ratio.device).to(ratio.dtype)
             unclipped = ratio * A
             clipped_r = torch.clamp(ratio, 1.0 - self.cfg.clip_eps, 1.0 + self.cfg.clip_eps) * A
             surrogate = -torch.min(unclipped, clipped_r).mean()
-            cum_loss = cum_loss + surrogate
 
-            # KL diagnostic (rough — token-level mean)
+            # Normalize so accumulated grads ≈ averaged loss across all units
+            (surrogate / n_units).backward()
+            cum_loss_value += float(surrogate.detach().cpu())
+            n_seen += 1
+
             with torch.no_grad():
                 kl = (old_lp.detach() - new_lp.detach()).mean().item()
                 kl_acc += kl
                 n_tok_acc += 1
-                # Clip fraction: how often the clip kicked in
                 clip_mask = ((ratio < 1 - self.cfg.clip_eps) | (ratio > 1 + self.cfg.clip_eps))
                 clipped += int(clip_mask.sum().item())
                 total += int(clip_mask.numel())
+            # Drop the graph eagerly
+            del new_lp, ratio, surrogate, unclipped, clipped_r
 
+        avg_loss = cum_loss_value / max(1, n_seen)
         kl_mean = (kl_acc / n_tok_acc) if n_tok_acc > 0 else 0.0
-        return cum_loss / max(1, len(batch_steps)), kl_mean, clipped, total
+        return avg_loss, kl_mean, clipped, total
 
     # -----------------------------------------------------------------
     # Checkpoint
