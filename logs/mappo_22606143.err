@@ -1,0 +1,43 @@
+/home/kwang/mindsafe_env/lib/python3.11/site-packages/transformers/utils/hub.py:110: FutureWarning: Using `TRANSFORMERS_CACHE` is deprecated and will be removed in v5 of Transformers. Use `HF_HOME` instead.
+  warnings.warn(
+Loading checkpoint shards:   0%|          | 0/4 [00:00<?, ?it/s]Loading checkpoint shards:  25%|██▌       | 1/4 [00:06<00:18,  6.28s/it]Loading checkpoint shards:  50%|█████     | 2/4 [00:12<00:12,  6.39s/it]Loading checkpoint shards:  75%|███████▌  | 3/4 [00:19<00:06,  6.33s/it]Loading checkpoint shards: 100%|██████████| 4/4 [00:20<00:00,  4.59s/it]Loading checkpoint shards: 100%|██████████| 4/4 [00:20<00:00,  5.23s/it]
+Traceback (most recent call last):
+  File "/gpfs/home4/kwang/mindsafe/scripts/train_mappo.py", line 276, in <module>
+    main()
+  File "/gpfs/home4/kwang/mindsafe/scripts/train_mappo.py", line 272, in main
+    asyncio.run(main_async(config, out_dir, args))
+  File "/sw/arch/RHEL8/EB_production/2023/software/Python/3.11.3-GCCcore-12.3.0/lib/python3.11/asyncio/runners.py", line 190, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "/sw/arch/RHEL8/EB_production/2023/software/Python/3.11.3-GCCcore-12.3.0/lib/python3.11/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/sw/arch/RHEL8/EB_production/2023/software/Python/3.11.3-GCCcore-12.3.0/lib/python3.11/asyncio/base_events.py", line 653, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "/gpfs/home4/kwang/mindsafe/scripts/train_mappo.py", line 133, in main_async
+    buffer = await collect_rollouts(
+             ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/gpfs/home4/kwang/mindsafe/src/mappo/rollout.py", line 332, in collect_rollouts
+    judge_result = await judge.evaluate(
+                   ^^^^^^^^^^^^^^^^^^^^^
+  File "/gpfs/home4/kwang/mindsafe/src/agents/external_judge.py", line 33, in evaluate
+    raw = await self._generate(prompt, temperature=0.0, max_tokens=1024)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/gpfs/home4/kwang/mindsafe/src/agents/base.py", line 151, in _generate
+    return await self.llm_client.generate_async(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/gpfs/home4/kwang/mindsafe/src/models/vllm_http_client.py", line 175, in generate_async
+    return await loop.run_in_executor(None, lambda: self.generate(*args, **kwargs))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/sw/arch/RHEL8/EB_production/2023/software/Python/3.11.3-GCCcore-12.3.0/lib/python3.11/concurrent/futures/thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/gpfs/home4/kwang/mindsafe/src/models/vllm_http_client.py", line 175, in <lambda>
+    return await loop.run_in_executor(None, lambda: self.generate(*args, **kwargs))
+                                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/gpfs/home4/kwang/mindsafe/src/models/vllm_http_client.py", line 170, in generate
+    r.raise_for_status()
+  File "/home/kwang/mindsafe_env/lib/python3.11/site-packages/requests/models.py", line 1028, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 500 Server Error: Internal Server Error for url: http://localhost:8000/v1/chat/completions
