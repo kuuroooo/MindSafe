@@ -344,18 +344,27 @@ class MultiAgentPolicy:
     # ---- checkpoint -------------------------------------------------------
 
     def save(self, dir_path: Path) -> None:
-        """Save all three adapters into dir_path/{agent_name}/."""
-        dir_path = Path(dir_path); dir_path.mkdir(parents=True, exist_ok=True)
-        for name in self.AGENT_NAMES:
-            (dir_path / name).mkdir(parents=True, exist_ok=True)
-            with active_adapter_ctx(self.base_model, name):
-                self.base_model.save_pretrained(str(dir_path / name), selected_adapters=[name])
+        """Save all three adapters into dir_path/{agent_name}/.
+
+        Single save_pretrained call covering every adapter — PEFT writes
+        one subdirectory per adapter name. Per-adapter calls with
+        selected_adapters=[name] double-nest as dir/name/name/, which
+        breaks load_adapter (looks one level shallower).
+        """
+        dir_path = Path(dir_path).resolve()
+        dir_path.mkdir(parents=True, exist_ok=True)
+        self.base_model.save_pretrained(
+            str(dir_path),
+            selected_adapters=list(self.AGENT_NAMES),
+        )
 
     def load(self, dir_path: Path) -> None:
         """Load adapter weights from dir_path/{agent_name}/.
 
         Assumes adapter slots are already created (via __init__). Only
-        replaces weights, not adapter structure.
+        replaces weights, not adapter structure. Absolute path forces
+        PEFT to treat this as a local dir rather than HF repo id.
         """
+        dir_path = Path(dir_path).resolve()
         for name in self.AGENT_NAMES:
-            self.base_model.load_adapter(str(Path(dir_path) / name), adapter_name=name)
+            self.base_model.load_adapter(str(dir_path / name), adapter_name=name)
