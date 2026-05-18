@@ -15,15 +15,24 @@
 # Confirms PEFT loads, generation works, judge talks back, the PPO update
 # step doesn't crash, and one eval pass completes.
 #
-# Submit with:  sbatch slurm/train_mappo_smoke.job
+# Submit fresh:
+#   sbatch slurm/train_mappo_smoke.job
+#
+# Submit a resume smoke (verifies update_idx advances past 0; runs ONE
+# additional update on top of the resumed checkpoint, then evals + saves):
+#   sbatch --export=ALL,RESUME_FROM=data/results/mappo/smoke_<JOBID>/ckpt_00000 \
+#       slurm/train_mappo_smoke.job
 #
 # Expected runtime: vLLM startup ~5 min + Llama-3-8B+LoRA load ~30s +
 # ~2 episodes of rollout (~5-15 min) + 1 update + 1 eval ≈ 30-45 min.
 
 set -e
 
+RESUME_FROM="${RESUME_FROM:-}"
+
 echo "=== MAPPO smoke start: $(date) ==="
 echo "Job ID: $SLURM_JOB_ID   Node: $(hostname)"
+[ -n "$RESUME_FROM" ] && echo "Resuming from: $RESUME_FROM"
 nvidia-smi --query-gpu=index,name,memory.total --format=csv
 
 module purge
@@ -48,10 +57,22 @@ mkdir -p logs
 
 cd ~/mindsafe
 
-OUTPUT_DIR="data/results/mappo/smoke_${SLURM_JOB_ID}"
+# When resuming, write into a NEW dir so we can compare ckpt indices
+# against the original. Resume from update 0 → loop runs update 1 only.
+if [ -n "$RESUME_FROM" ]; then
+    OUTPUT_DIR="data/results/mappo/smoke_resume_${SLURM_JOB_ID}"
+    # total_episodes=4 → 2 updates total; resume at idx=1 → 1 fresh update
+    TOTAL_EPISODES=4
+else
+    OUTPUT_DIR="data/results/mappo/smoke_${SLURM_JOB_ID}"
+    TOTAL_EPISODES=2
+fi
+
+EXTRA_ARGS=""
+[ -n "$RESUME_FROM" ] && EXTRA_ARGS="--resume-from $RESUME_FROM"
 
 # Smallest possible run that exercises every code path:
-#   1 scenario × 2 episodes/update = 1 update step
+#   1 scenario × 2 episodes/update = 1 update step (2 on resume smoke)
 #   max_turns=4 (instead of 15) → fast episodes
 #   save_every=1, eval_every=1 → confirm checkpoint + eval also work
 python scripts/train_mappo.py \
@@ -59,10 +80,11 @@ python scripts/train_mappo.py \
     --output-dir "$OUTPUT_DIR" \
     --scenarios ambiguous_crisis \
     --n-eps-per-scen-per-update 2 \
-    --total-episodes 2 \
+    --total-episodes $TOTAL_EPISODES \
     --max-turns 4 \
     --save-every 1 \
-    --eval-every 1
+    --eval-every 1 \
+    $EXTRA_ARGS
 
 echo "=== MAPPO smoke end: $(date) ==="
 echo "Inspect: $OUTPUT_DIR/{train_log.jsonl,eval_*.json,final/}"
