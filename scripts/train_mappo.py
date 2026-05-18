@@ -111,9 +111,14 @@ async def main_async(config: dict, out_dir: Path, args):
         )
         trainer = MAPPOTrainer(policy, value_net, mp_cfg)
 
+        start_update = 0
         if args.resume_from:
             print(f"[mappo] Resuming from {args.resume_from}")
-            trainer.load_checkpoint(Path(args.resume_from))
+            resumed_idx = trainer.load_checkpoint(Path(args.resume_from))
+            if resumed_idx >= 0:
+                start_update = resumed_idx + 1
+                print(f"[mappo] Resumed at update_idx={resumed_idx}; "
+                      f"next update will be {start_update}.")
 
         make_patient = _patient_factory(
             policy.base_model, policy.tokenizer, config["mas_model"]["device"],
@@ -129,7 +134,7 @@ async def main_async(config: dict, out_dir: Path, args):
 
         log_path = out_dir / "train_log.jsonl"
         with log_path.open("a") as log_f:
-            for update_idx in range(n_updates):
+            for update_idx in range(start_update, n_updates):
                 buffer = await collect_rollouts(
                     policy=policy,
                     value_net=value_net,
@@ -167,7 +172,7 @@ async def main_async(config: dict, out_dir: Path, args):
 
                 if (update_idx + 1) % save_every == 0:
                     ck = out_dir / f"ckpt_{update_idx:05d}"
-                    trainer.save_checkpoint(ck)
+                    trainer.save_checkpoint(ck, update_idx=update_idx)
                     print(f"[mappo] saved {ck}")
 
                 if (update_idx + 1) % eval_every == 0:
@@ -194,7 +199,7 @@ async def main_async(config: dict, out_dir: Path, args):
                     )
 
         # ---- final ----
-        trainer.save_checkpoint(out_dir / "final")
+        trainer.save_checkpoint(out_dir / "final", update_idx=n_updates - 1)
         print("[mappo] done.")
 
     finally:

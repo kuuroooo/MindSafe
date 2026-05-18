@@ -181,8 +181,12 @@ mappo:
     target_modules: ["q_proj", "k_proj", "v_proj", "o_proj"]
 
   # Checkpointing + eval cadence
-  save_every: 100                # PPO updates
-  eval_every: 50                 # PPO updates
+  # save_every: every update — prior run (save_every=100) did 19 updates in
+  # 3 days and saved nothing. Segmented training relies on every update
+  # landing on disk so RESUME_FROM always has a recent checkpoint.
+  # eval_every: 5 → ~3-4 evals per 3-day segment.
+  save_every: 1                  # PPO updates
+  eval_every: 5                  # PPO updates
   eval_n_eps_per_scenario: 5     # cheap eval; full eval at end
 
 # ============================================

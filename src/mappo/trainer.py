@@ -230,19 +230,22 @@ class MAPPOTrainer:
     # Checkpoint
     # -----------------------------------------------------------------
 
-    def save_checkpoint(self, dir_path: Path) -> None:
+    def save_checkpoint(self, dir_path: Path, update_idx: int = -1) -> None:
         dir_path = Path(dir_path); dir_path.mkdir(parents=True, exist_ok=True)
         self.policy.save(dir_path / "policy")
         self.value_net.save(dir_path / "value")
         torch.save({
             "policy_optim": self.policy_optim.state_dict(),
             "value_optim":  self.value_optim.state_dict(),
+            "update_idx":   update_idx,
         }, dir_path / "optim.pt")
 
-    def load_checkpoint(self, dir_path: Path) -> None:
+    def load_checkpoint(self, dir_path: Path) -> int:
+        """Returns the update_idx the checkpoint was saved at (-1 if absent)."""
         dir_path = Path(dir_path)
         self.policy.load(dir_path / "policy")
         self.value_net.load(dir_path / "value")
         opt = torch.load(dir_path / "optim.pt", map_location="cpu")
         self.policy_optim.load_state_dict(opt["policy_optim"])
         self.value_optim.load_state_dict(opt["value_optim"])
+        return int(opt.get("update_idx", -1))
