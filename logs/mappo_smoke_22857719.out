@@ -1,0 +1,25 @@
+=== MAPPO smoke start: Mon May 18 17:08:35 CEST 2026 ===
+Job ID: 22857719   Node: gcn41.local.snellius.surf.nl
+index, name, memory.total [MiB]
+0, NVIDIA A100-SXM4-40GB, 40960 MiB
+1, NVIDIA A100-SXM4-40GB, 40960 MiB
+2, NVIDIA A100-SXM4-40GB, 40960 MiB
+3, NVIDIA A100-SXM4-40GB, 40960 MiB
+[mappo] Output dir: data/results/mappo/smoke_22857719
+[mappo] Scenarios: ['ambiguous_crisis']
+[mappo] eps/update: 2 | n_updates: 1
+[mappo] Starting vLLM judge server (GPUs [1, 2])
+[vLLM] Starting server on GPUs [1, 2], port 8000
+[vLLM] CUDA_VISIBLE_DEVICES=1,2
+[vLLM] cmd: python -m vllm.entrypoints.openai.api_server --model hugging-quants/Meta-Llama-3.1-70B-Instruct-AWQ-INT4 --tensor-parallel-size 2 --port 8000 --host 0.0.0.0 --max-model-len 8192 --dtype float16 --gpu-memory-utilization 0.9 --quantization awq --disable-custom-all-reduce --enforce-eager
+[vLLM] Server ready at http://localhost:8000
+[mappo] Loading policy: meta-llama/Meta-Llama-3-8B-Instruct
+[mappo] Trainable LoRA params: 13,631,488
+[update 0000] r_t=0.950 c=0.020 R=0.930 σ=0.955 Vloss=2.1775 clip=15.27%
+[mappo] saved data/results/mappo/smoke_22857719/ckpt_00000
+[mappo] running eval @ update 0
+[eval] mean_c=0.042 σ=0.914 asr=5.0% detect=0.0% fpr=0.0%
+[mappo] done.
+[vLLM] Stopping server...
+=== MAPPO smoke end: Mon May 18 17:41:27 CEST 2026 ===
+Inspect: data/results/mappo/smoke_22857719/{train_log.jsonl,eval_*.json,final/}
