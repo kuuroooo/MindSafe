@@ -1,0 +1,50 @@
+=== MAPPO start: Mon May 25 09:54:49 PM CEST 2026 ===
+Job ID: 23103242   Node: gcn51.local.snellius.surf.nl
+Resuming from: data/results/mappo/main/ckpt_00013
+index, name, memory.total [MiB]
+0, NVIDIA A100-SXM4-40GB, 40960 MiB
+1, NVIDIA A100-SXM4-40GB, 40960 MiB
+2, NVIDIA A100-SXM4-40GB, 40960 MiB
+3, NVIDIA A100-SXM4-40GB, 40960 MiB
+[mappo] Output dir: data/results/mappo/main
+[mappo] Scenarios: ['ambiguous_crisis', 'gradual_escalation', 'delusion_reinforcement', 'harmful_coping', 'dependency_seeking']
+[mappo] eps/update: 20 | n_updates: 800
+[mappo] Starting vLLM judge server (GPUs [1, 2])
+[vLLM] Starting server on GPUs [1, 2], port 8000
+[vLLM] CUDA_VISIBLE_DEVICES=1,2
+[vLLM] cmd: python -m vllm.entrypoints.openai.api_server --model hugging-quants/Meta-Llama-3.1-70B-Instruct-AWQ-INT4 --tensor-parallel-size 2 --port 8000 --host 0.0.0.0 --max-model-len 8192 --dtype float16 --gpu-memory-utilization 0.9 --quantization awq --disable-custom-all-reduce --enforce-eager
+[vLLM] Server ready at http://localhost:8000
+[mappo] Loading policy: meta-llama/Meta-Llama-3-8B-Instruct
+[mappo] Trainable LoRA params: 13,631,488
+[mappo] Resuming from data/results/mappo/main/ckpt_00013
+[mappo] Resumed at update_idx=13; next update will be 14.
+[update 0014] r_t=0.857 c=0.088 R=0.769 σ=0.837 Vloss=0.9921 clip=11.92%
+[mappo] saved data/results/mappo/main/ckpt_00014
+[mappo] running eval @ update 14
+[eval] mean_c=0.156 σ=0.723 asr=28.5% detect=39.3% fpr=0.0%
+[update 0015] r_t=0.847 c=0.092 R=0.755 σ=0.831 Vloss=1.4495 clip=12.49%
+[mappo] saved data/results/mappo/main/ckpt_00015
+[update 0016] r_t=0.863 c=0.097 R=0.766 σ=0.825 Vloss=1.2552 clip=12.04%
+[mappo] saved data/results/mappo/main/ckpt_00016
+[update 0017] r_t=0.859 c=0.090 R=0.769 σ=0.839 Vloss=1.3908 clip=12.20%
+[mappo] saved data/results/mappo/main/ckpt_00017
+[update 0018] r_t=0.872 c=0.089 R=0.783 σ=0.839 Vloss=1.3096 clip=12.42%
+[mappo] saved data/results/mappo/main/ckpt_00018
+[update 0019] r_t=0.817 c=0.113 R=0.704 σ=0.788 Vloss=1.4925 clip=12.46%
+[mappo] saved data/results/mappo/main/ckpt_00019
+[mappo] running eval @ update 19
+[eval] mean_c=0.141 σ=0.752 asr=24.5% detect=17.4% fpr=0.0%
+[update 0020] r_t=0.835 c=0.095 R=0.740 σ=0.823 Vloss=1.3156 clip=12.49%
+[mappo] saved data/results/mappo/main/ckpt_00020
+[update 0021] r_t=0.831 c=0.119 R=0.712 σ=0.789 Vloss=1.3387 clip=12.03%
+[mappo] saved data/results/mappo/main/ckpt_00021
+[update 0022] r_t=0.848 c=0.100 R=0.748 σ=0.809 Vloss=1.2087 clip=12.15%
+[mappo] saved data/results/mappo/main/ckpt_00022
+[update 0023] r_t=0.871 c=0.083 R=0.787 σ=0.847 Vloss=1.3335 clip=12.19%
+[mappo] saved data/results/mappo/main/ckpt_00023
+[update 0024] r_t=0.842 c=0.089 R=0.752 σ=0.840 Vloss=1.5306 clip=12.36%
+[mappo] saved data/results/mappo/main/ckpt_00024
+[mappo] running eval @ update 24
+[eval] mean_c=0.144 σ=0.749 asr=29.1% detect=22.9% fpr=0.0%
+[update 0025] r_t=0.859 c=0.094 R=0.764 σ=0.821 Vloss=1.5168 clip=12.31%
+[mappo] saved data/results/mappo/main/ckpt_00025
