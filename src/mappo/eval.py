@@ -155,11 +155,19 @@ async def evaluate_against_baseline(
     base_seed: int = 1000,            # different from training seeds
     hook=None,                        # optional adversarial eval
     monitor_chain_of_thought: bool = True,
+    turns_out_path: Optional[Path] = None,
 ) -> Dict:
     """Run the trained policy through the baseline eval harness.
 
     Returns a dict with the same per-arm summary shape used in
     `scripts/consensus_penalty.py`.
+
+    If `turns_out_path` is given, also appends one JSONL line per turn
+    with the fields needed for offline diagnostics: scenario, ep, turn,
+    latent_distance, external_safety, therapeutic_quality, c_consensus,
+    its two factors (similarity = exp(-d/τ); unsafety = 1-σ),
+    coordinator_final_label, and text_agreement. Each line is flushed
+    immediately so partial results survive a crash mid-eval.
     """
     from src.agents.external_judge import ExternalJudgeAgent
     from src.mas.instrumented_mas import InstrumentedMAS
@@ -192,54 +200,93 @@ async def evaluate_against_baseline(
     all_steps: List[dict] = []
     per_scen: Dict[str, dict] = {}
 
-    for scen in scenarios:
-        scen_steps: List[dict] = []
-        for ep in range(n_eps_per_scenario):
-            patient = PsiPatientSimulator(
-                llm_client=None,    # not used — see note below
-                scenario_name=scen,
-                seed=base_seed + ep,
-                conv_idx=ep,
-                base_seed=base_seed,
-            )
-            # NOTE: PsiPatientSimulator.generate_message() uses the llm_client
-            # from turn 1 onward. For eval we want deterministic patients —
-            # construct a tiny client wrapper that calls the base model with
-            # adapters disabled. (This mirrors rollout._FrozenBaseClient but
-            # we can also pass the same instance from the trainer.)
-            from .rollout import _FrozenBaseClient
-            patient.llm_client = _FrozenBaseClient(
-                policy.base_model, policy.tokenizer, device=policy.device,
-            )
+    turns_file = None
+    if turns_out_path is not None:
+        turns_out_path = Path(turns_out_path)
+        turns_out_path.parent.mkdir(parents=True, exist_ok=True)
+        turns_file = turns_out_path.open("w")
 
-            mas.reset()
-            patient.turn_count = 0
-            patient.messages_sent = []
-            patient.history = []
-            user_msg = await patient.generate_message()
-            for turn in range(max_turns):
-                result = await mas.generate_response(user_msg)
-                user_msg = await patient.generate_message(
-                    assistant_response=result["response"],
-                    force_escalation=(turn > 2),
+    try:
+        for scen in scenarios:
+            scen_steps: List[dict] = []
+            for ep in range(n_eps_per_scenario):
+                patient = PsiPatientSimulator(
+                    llm_client=None,    # not used — see note below
+                    scenario_name=scen,
+                    seed=base_seed + ep,
+                    conv_idx=ep,
+                    base_seed=base_seed,
+                )
+                # NOTE: PsiPatientSimulator.generate_message() uses the llm_client
+                # from turn 1 onward. For eval we want deterministic patients —
+                # construct a tiny client wrapper that calls the base model with
+                # adapters disabled. (This mirrors rollout._FrozenBaseClient but
+                # we can also pass the same instance from the trainer.)
+                from .rollout import _FrozenBaseClient
+                patient.llm_client = _FrozenBaseClient(
+                    policy.base_model, policy.tokenizer, device=policy.device,
                 )
 
-            for t in mas.turn_logs:
-                rec = {
-                    "scenario": scen,
-                    "external_safety": t.get("external_safety"),
-                    "latent_distance": t.get("latent_distance"),
-                    "unsafe_consensus": t.get("unsafe_consensus"),
-                    "coordinator_final_label": (
-                        (t.get("coordinator_final") or {}).get("final_label")
-                    ),
-                }
-                rec["c_consensus"] = c_consensus_from_distance(
-                    rec["latent_distance"], rec["external_safety"], tau=tau,
-                ) if rec["latent_distance"] is not None and rec["external_safety"] is not None else None
-                scen_steps.append(rec)
-                all_steps.append(rec)
-        per_scen[scen] = _summary(scen_steps, distance_threshold, safety_threshold)
+                mas.reset()
+                patient.turn_count = 0
+                patient.messages_sent = []
+                patient.history = []
+                user_msg = await patient.generate_message()
+                for turn in range(max_turns):
+                    result = await mas.generate_response(user_msg)
+                    user_msg = await patient.generate_message(
+                        assistant_response=result["response"],
+                        force_escalation=(turn > 2),
+                    )
+
+                for t in mas.turn_logs:
+                    rec = {
+                        "scenario": scen,
+                        "external_safety": t.get("external_safety"),
+                        "latent_distance": t.get("latent_distance"),
+                        "unsafe_consensus": t.get("unsafe_consensus"),
+                        "coordinator_final_label": (
+                            (t.get("coordinator_final") or {}).get("final_label")
+                        ),
+                    }
+                    rec["c_consensus"] = c_consensus_from_distance(
+                        rec["latent_distance"], rec["external_safety"], tau=tau,
+                    ) if rec["latent_distance"] is not None and rec["external_safety"] is not None else None
+                    scen_steps.append(rec)
+                    all_steps.append(rec)
+
+                    if turns_file is not None:
+                        # Per-turn record for offline diagnostics. Decomposed
+                        # c_consensus into its two factors so we can plot each
+                        # separately and run bootstrap CIs without recomputing.
+                        d = rec["latent_distance"]
+                        sigma = rec["external_safety"]
+                        sim = math.exp(-d / tau) if d is not None else None
+                        unsafety = (1.0 - float(sigma)) if sigma is not None else None
+                        judge_out = t.get("judge") or {}
+                        ther_q = judge_out.get("therapeutic_quality")
+                        line = {
+                            "scenario": scen,
+                            "ep": ep,
+                            "turn": t.get("turn"),
+                            "latent_distance": d,
+                            "external_safety": sigma,
+                            "therapeutic_quality": (
+                                float(ther_q) if ther_q is not None else None
+                            ),
+                            "c_consensus": rec["c_consensus"],
+                            "similarity_term": sim,       # exp(-d/τ)
+                            "unsafety_term":   unsafety,  # 1 - σ
+                            "coordinator_final_label": rec["coordinator_final_label"],
+                            "unsafe_consensus": rec["unsafe_consensus"],
+                            "text_agreement": t.get("text_agreement"),
+                        }
+                        turns_file.write(json.dumps(line, default=str) + "\n")
+                        turns_file.flush()
+            per_scen[scen] = _summary(scen_steps, distance_threshold, safety_threshold)
+    finally:
+        if turns_file is not None:
+            turns_file.close()
 
     return {
         "n_turns": len(all_steps),

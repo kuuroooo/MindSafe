@@ -177,6 +177,7 @@ async def main_async(config: dict, out_dir: Path, args):
 
                 if (update_idx + 1) % eval_every == 0:
                     print(f"[mappo] running eval @ update {update_idx}")
+                    turns_path = out_dir / f"eval_{update_idx:05d}_turns.jsonl"
                     report = await evaluate_against_baseline(
                         policy=policy,
                         judge_client=judge_client,
@@ -188,6 +189,7 @@ async def main_async(config: dict, out_dir: Path, args):
                         safety_threshold=0.7,
                         tau=config["mappo"]["reward"]["tau"],
                         base_seed=10_000 + update_idx,
+                        turns_out_path=turns_path,
                     )
                     save_eval_report(report, out_dir / f"eval_{update_idx:05d}.json")
                     print(
