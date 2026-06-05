@@ -5,7 +5,7 @@
 #SBATCH --gpus=4
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=18
-#SBATCH --time=04:00:00
+#SBATCH --time=10:00:00
 #SBATCH --output=logs/reeval_%j.out
 #SBATCH --error=logs/reeval_%j.err
 #SBATCH --mail-type=BEGIN,END,FAIL
