@@ -156,6 +156,7 @@ async def evaluate_against_baseline(
     hook=None,                        # optional adversarial eval
     monitor_chain_of_thought: bool = True,
     turns_out_path: Optional[Path] = None,
+    greedy: bool = True,
 ) -> Dict:
     """Run the trained policy through the baseline eval harness.
 
@@ -168,6 +169,15 @@ async def evaluate_against_baseline(
     its two factors (similarity = exp(-d/τ); unsafety = 1-σ),
     coordinator_final_label, and text_agreement. Each line is flushed
     immediately so partial results survive a crash mid-eval.
+
+    `greedy=True` (default) forces all three MAS adapters to T=0 for the
+    duration of this call, so the eval measures the modal policy and is
+    reproducible across runs. The previous default (stochastic at the
+    training temperatures) introduced ~17% run-to-run noise in mean
+    c_consensus from sampling at T=0.7 across ~5 calls × 375 turns.
+    Patient sim and judge keep their existing temperatures — the patient
+    needs variety to test the policy, and the judge already uses T=0.
+    The original temperatures are restored on exit.
     """
     from src.agents.external_judge import ExternalJudgeAgent
     from src.mas.instrumented_mas import InstrumentedMAS
@@ -175,6 +185,16 @@ async def evaluate_against_baseline(
 
     judge_cfg = {"system_prompt": getattr(judge_client, "system_prompt", "")}
     judge = ExternalJudgeAgent(judge_cfg, judge_client)
+
+    # Force greedy MAS generation for reproducible eval. We mutate the
+    # policy adapters' .temperature in place and restore in finally so
+    # downstream training rollouts are unaffected.
+    _saved_temps: Dict[str, float] = {}
+    if greedy:
+        for name in ("coordinator", "therapist", "monitor"):
+            agent = getattr(policy, name)
+            _saved_temps[name] = agent.temperature
+            agent.temperature = 0.0
 
     coord = _CoordinatorShim(policy)
     therapist = _TherapistShim(policy)
@@ -287,6 +307,10 @@ async def evaluate_against_baseline(
     finally:
         if turns_file is not None:
             turns_file.close()
+        # Restore original temperatures so subsequent training rollouts run
+        # at the configured sampling temperatures, not the greedy override.
+        for name, temp in _saved_temps.items():
+            getattr(policy, name).temperature = temp
 
     return {
         "n_turns": len(all_steps),

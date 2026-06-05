@@ -90,6 +90,41 @@ class MAPPOTrainer:
         if n == 0:
             return {"n_steps": 0}
 
+        # ---- pre-update diagnostics (Meng items 5 + 6) ----
+        # Computed BEFORE advantage normalization so we report the raw
+        # quantities the critic actually optimized this update.
+        raw_adv  = np.asarray(buffer.advantages, dtype=np.float64)
+        raw_rets = np.asarray(buffer.returns,    dtype=np.float64)
+        rollout_values = np.array([s.value for s in steps], dtype=np.float64)
+        # Critic health: explained variance of the value head.
+        #   1.0 = critic perfectly predicts returns
+        #   0.0 = critic no better than predicting the mean
+        #   <0  = critic worse than the mean baseline (broken)
+        ret_var = float(np.var(raw_rets))
+        if ret_var > 1e-12:
+            explained_var = 1.0 - float(np.var(raw_rets - rollout_values)) / ret_var
+        else:
+            explained_var = float("nan")
+        # Reward scale diagnostics — confirms/refutes "penalty too small
+        # relative to therapy reward noise". β·c_consensus is what enters
+        # the gradient via r_joint = α·r_therapy − β·c_consensus.
+        r_therapy_arr = np.array([s.r_therapy   for s in steps], dtype=np.float64)
+        c_cons_arr    = np.array([s.c_consensus for s in steps], dtype=np.float64)
+        beta = self.cfg.beta
+        diag_pre = {
+            "explained_variance": explained_var,
+            "adv_mean_raw":       float(np.mean(raw_adv)),
+            "adv_std_raw":        float(np.std(raw_adv)),
+            "returns_mean":       float(np.mean(raw_rets)),
+            "returns_std":        float(np.std(raw_rets)),
+            "values_mean":        float(np.mean(rollout_values)),
+            "values_std":         float(np.std(rollout_values)),
+            "r_therapy_std":      float(np.std(r_therapy_arr)),
+            "c_consensus_std":    float(np.std(c_cons_arr)),
+            "beta_c_consensus_std": beta * float(np.std(c_cons_arr)),
+            "advantage_normalized": True,   # see line below
+        }
+
         # Normalize advantages — standard PPO trick, large variance
         # reduction without changing the optimum.
         adv = torch.tensor(buffer.advantages, dtype=torch.float32)
@@ -108,6 +143,7 @@ class MAPPOTrainer:
             "kl/monitor":       0.0,
             "kl/coord_route":   0.0,
             "clip_frac":        0.0,
+            **diag_pre,
         }
         n_minibatch_steps = 0
         clip_count = 0
