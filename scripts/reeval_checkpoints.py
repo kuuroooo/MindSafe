@@ -53,11 +53,19 @@ from src.models import (
 
 
 def _ckpt_idx(ckpt_name: str) -> int:
-    """ckpt_00004 -> 4."""
+    """ckpt_00004 -> 4. Returns -1 for the special 'baseline' name."""
+    if ckpt_name == "baseline":
+        return -1
     return int(ckpt_name.split("_")[-1])
 
 
-async def main_async(config: dict, run_dir: Path, ckpt_names: list[str], scenarios: list[str] | None):
+async def main_async(
+    config: dict,
+    run_dir: Path,
+    ckpt_names: list[str],
+    scenarios: list[str] | None,
+    base_seed_override: int | None = None,
+):
     print(f"[reeval] Starting vLLM judge server (GPUs {config['judge_model']['server']['gpu_ids']})")
     server = start_judge_server(config["judge_model"])
 
@@ -85,25 +93,49 @@ async def main_async(config: dict, run_dir: Path, ckpt_names: list[str], scenari
         tau = config["mappo"]["reward"]["tau"]
 
         for ckpt_name in ckpt_names:
+            is_baseline = (ckpt_name == "baseline")
             ckpt_dir = run_dir / ckpt_name
-            if not (ckpt_dir / "policy").exists():
+            if not is_baseline and not (ckpt_dir / "policy").exists():
                 print(f"[reeval] SKIP {ckpt_name}: no policy/ subdir at {ckpt_dir}")
                 continue
 
             idx = _ckpt_idx(ckpt_name)
-            turns_path = run_dir / f"eval_{idx:05d}_turns.jsonl"
-            summary_path = run_dir / f"reeval_{idx:05d}.json"
+            if is_baseline:
+                # Untrained policy = LoRA adapters at init (B=0 → identity).
+                # Used as the Phase-1 reference for "baseline vs MAPPO" plots.
+                seed_tag = base_seed_override if base_seed_override is not None else 10_000
+                turns_path = run_dir / f"baseline_turns_seed{seed_tag}.jsonl"
+                summary_path = run_dir / f"baseline_seed{seed_tag}.json"
+            else:
+                # Tag filenames with the eval seed used so multiple seeds can
+                # coexist (item 2 "second seed" robustness check).
+                default_seed = 10_000 + idx
+                seed = base_seed_override if base_seed_override is not None else default_seed
+                if seed == default_seed:
+                    turns_path = run_dir / f"eval_{idx:05d}_turns.jsonl"
+                    summary_path = run_dir / f"reeval_{idx:05d}.json"
+                else:
+                    turns_path = run_dir / f"eval_{idx:05d}_turns_seed{seed}.jsonl"
+                    summary_path = run_dir / f"reeval_{idx:05d}_seed{seed}.json"
 
             if turns_path.exists():
                 print(f"[reeval] SKIP {ckpt_name}: {turns_path.name} already exists")
                 continue
 
-            print(f"[reeval] {ckpt_name} → loading policy adapters")
-            policy.load(ckpt_dir / "policy")
-
-            # Use the SAME base_seed the training-time eval used so the summary
-            # is comparable. train_mappo.py uses base_seed=10_000 + update_idx.
-            base_seed = 10_000 + idx
+            if is_baseline:
+                print(f"[reeval] {ckpt_name} → using UNTRAINED policy "
+                      f"(LoRA adapters at init = identity)")
+                base_seed = base_seed_override if base_seed_override is not None else 10_000
+            else:
+                print(f"[reeval] {ckpt_name} → loading policy adapters")
+                policy.load(ckpt_dir / "policy")
+                # Default: SAME base_seed the training-time eval used so the summary
+                # is comparable. train_mappo.py uses base_seed=10_000 + update_idx.
+                base_seed = (
+                    base_seed_override
+                    if base_seed_override is not None
+                    else 10_000 + idx
+                )
 
             print(f"[reeval] {ckpt_name} → running eval "
                   f"(scenarios={eval_scenarios}, n_eps={n_eps}, seed={base_seed})")
@@ -149,6 +181,13 @@ def main():
         "--scenarios", nargs="+", default=None,
         help="Override config scenarios (e.g. for a single-scenario sanity check).",
     )
+    parser.add_argument(
+        "--base-seed", type=int, default=None,
+        help="Override the eval base_seed. Defaults to 10_000+idx (matches "
+             "the training-time eval seed). Use a different value for a "
+             "'second seed' robustness pass, or set to 42+idx*1000 to match "
+             "the training-time ROLLOUT seed for the sanity check.",
+    )
     args = parser.parse_args()
 
     config = load_config(args.config)
@@ -156,7 +195,10 @@ def main():
     if not run_dir.exists():
         raise SystemExit(f"run_dir not found: {run_dir}")
 
-    asyncio.run(main_async(config, run_dir, args.checkpoints, args.scenarios))
+    asyncio.run(main_async(
+        config, run_dir, args.checkpoints, args.scenarios,
+        base_seed_override=args.base_seed,
+    ))
 
 
 if __name__ == "__main__":

@@ -27,16 +27,27 @@
 #
 # Submit pointing at a different run dir:
 #   sbatch --export=ALL,RUN_DIR=data/results/mappo/sweep_pilot slurm/reeval_checkpoints.job
+#
+# Submit the baseline (untrained policy = LoRA at init = identity):
+#   sbatch --export=ALL,CKPTS="baseline" slurm/reeval_checkpoints.job
+#
+# Submit the sanity check (matches training rollout seed instead of eval seed):
+#   sbatch --export=ALL,CKPTS="ckpt_00027",BASE_SEED=27042 slurm/reeval_checkpoints.job
+#
+# Submit a second-seed robustness check at u24:
+#   sbatch --export=ALL,CKPTS="ckpt_00024",BASE_SEED=20024 slurm/reeval_checkpoints.job
 
 set -e
 
 RUN_DIR="${RUN_DIR:-data/results/mappo/main}"
 CKPTS="${CKPTS:-ckpt_00004 ckpt_00009 ckpt_00014 ckpt_00019 ckpt_00024}"
+BASE_SEED="${BASE_SEED:-}"
 
 echo "=== reeval start: $(date) ==="
 echo "Job ID: $SLURM_JOB_ID   Node: $(hostname)"
 echo "Run dir: $RUN_DIR"
 echo "Checkpoints: $CKPTS"
+[ -n "$BASE_SEED" ] && echo "Base seed override: $BASE_SEED"
 nvidia-smi --query-gpu=index,name,memory.total --format=csv
 
 module purge
@@ -60,10 +71,14 @@ mkdir -p logs
 
 cd ~/mindsafe
 
+EXTRA_ARGS=""
+[ -n "$BASE_SEED" ] && EXTRA_ARGS="--base-seed $BASE_SEED"
+
 python scripts/reeval_checkpoints.py \
     --config configs/mappo_4gpu.yaml \
     --run-dir "$RUN_DIR" \
-    --checkpoints $CKPTS
+    --checkpoints $CKPTS \
+    $EXTRA_ARGS
 
 echo "=== reeval end: $(date) ==="
 echo "Inspect: $RUN_DIR/eval_*_turns.jsonl + $RUN_DIR/reeval_*.json"
