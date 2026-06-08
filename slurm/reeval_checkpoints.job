@@ -42,12 +42,14 @@ set -e
 RUN_DIR="${RUN_DIR:-data/results/mappo/main}"
 CKPTS="${CKPTS:-ckpt_00004 ckpt_00009 ckpt_00014 ckpt_00019 ckpt_00024}"
 BASE_SEED="${BASE_SEED:-}"
+STOCHASTIC="${STOCHASTIC:-}"
 
 echo "=== reeval start: $(date) ==="
 echo "Job ID: $SLURM_JOB_ID   Node: $(hostname)"
 echo "Run dir: $RUN_DIR"
 echo "Checkpoints: $CKPTS"
-[ -n "$BASE_SEED" ] && echo "Base seed override: $BASE_SEED"
+[ -n "$BASE_SEED" ]  && echo "Base seed override: $BASE_SEED"
+[ -n "$STOCHASTIC" ] && echo "Mode: STOCHASTIC (T=0.7) — matches training rollout regime"
 nvidia-smi --query-gpu=index,name,memory.total --format=csv
 
 module purge
@@ -72,7 +74,8 @@ mkdir -p logs
 cd ~/mindsafe
 
 EXTRA_ARGS=""
-[ -n "$BASE_SEED" ] && EXTRA_ARGS="--base-seed $BASE_SEED"
+[ -n "$BASE_SEED" ]  && EXTRA_ARGS="$EXTRA_ARGS --base-seed $BASE_SEED"
+[ -n "$STOCHASTIC" ] && EXTRA_ARGS="$EXTRA_ARGS --stochastic"
 
 python scripts/reeval_checkpoints.py \
     --config configs/mappo_4gpu.yaml \

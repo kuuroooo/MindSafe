@@ -65,6 +65,7 @@ async def main_async(
     ckpt_names: list[str],
     scenarios: list[str] | None,
     base_seed_override: int | None = None,
+    greedy: bool = True,
 ):
     print(f"[reeval] Starting vLLM judge server (GPUs {config['judge_model']['server']['gpu_ids']})")
     server = start_judge_server(config["judge_model"])
@@ -100,23 +101,26 @@ async def main_async(
                 continue
 
             idx = _ckpt_idx(ckpt_name)
+            mode_tag = "" if greedy else "_stoch"
             if is_baseline:
                 # Untrained policy = LoRA adapters at init (B=0 → identity).
                 # Used as the Phase-1 reference for "baseline vs MAPPO" plots.
                 seed_tag = base_seed_override if base_seed_override is not None else 10_000
-                turns_path = run_dir / f"baseline_turns_seed{seed_tag}.jsonl"
-                summary_path = run_dir / f"baseline_seed{seed_tag}.json"
+                turns_path = run_dir / f"baseline_turns_seed{seed_tag}{mode_tag}.jsonl"
+                summary_path = run_dir / f"baseline_seed{seed_tag}{mode_tag}.json"
             else:
                 # Tag filenames with the eval seed used so multiple seeds can
-                # coexist (item 2 "second seed" robustness check).
+                # coexist (item 2 "second seed" robustness check). Stochastic
+                # passes get _stoch suffix so they don't clobber greedy ones.
                 default_seed = 10_000 + idx
                 seed = base_seed_override if base_seed_override is not None else default_seed
-                if seed == default_seed:
+                if seed == default_seed and greedy:
                     turns_path = run_dir / f"eval_{idx:05d}_turns.jsonl"
                     summary_path = run_dir / f"reeval_{idx:05d}.json"
                 else:
-                    turns_path = run_dir / f"eval_{idx:05d}_turns_seed{seed}.jsonl"
-                    summary_path = run_dir / f"reeval_{idx:05d}_seed{seed}.json"
+                    seed_tag = f"_seed{seed}" if seed != default_seed else ""
+                    turns_path = run_dir / f"eval_{idx:05d}_turns{seed_tag}{mode_tag}.jsonl"
+                    summary_path = run_dir / f"reeval_{idx:05d}{seed_tag}{mode_tag}.json"
 
             if turns_path.exists():
                 print(f"[reeval] SKIP {ckpt_name}: {turns_path.name} already exists")
@@ -138,7 +142,8 @@ async def main_async(
                 )
 
             print(f"[reeval] {ckpt_name} → running eval "
-                  f"(scenarios={eval_scenarios}, n_eps={n_eps}, seed={base_seed})")
+                  f"(scenarios={eval_scenarios}, n_eps={n_eps}, "
+                  f"seed={base_seed}, greedy={greedy})")
             report = await evaluate_against_baseline(
                 policy=policy,
                 judge_client=judge_client,
@@ -151,6 +156,7 @@ async def main_async(
                 tau=tau,
                 base_seed=base_seed,
                 turns_out_path=turns_path,
+                greedy=greedy,
             )
             save_eval_report(report, summary_path)
             print(
@@ -188,6 +194,12 @@ def main():
              "'second seed' robustness pass, or set to 42+idx*1000 to match "
              "the training-time ROLLOUT seed for the sanity check.",
     )
+    parser.add_argument(
+        "--stochastic", action="store_true",
+        help="Eval at the policy's training-time temperatures (T=0.7) instead "
+             "of greedy (T=0). Needed for the item-1 sanity check vs rollouts, "
+             "which were collected under the stochastic policy.",
+    )
     args = parser.parse_args()
 
     config = load_config(args.config)
@@ -198,6 +210,7 @@ def main():
     asyncio.run(main_async(
         config, run_dir, args.checkpoints, args.scenarios,
         base_seed_override=args.base_seed,
+        greedy=not args.stochastic,
     ))
 
 
