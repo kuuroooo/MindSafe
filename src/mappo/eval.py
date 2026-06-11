@@ -156,6 +156,7 @@ async def evaluate_against_baseline(
     hook=None,                        # optional adversarial eval
     monitor_chain_of_thought: bool = True,
     turns_out_path: Optional[Path] = None,
+    transcripts_out_path: Optional[Path] = None,
     greedy: bool = True,
 ) -> Dict:
     """Run the trained policy through the baseline eval harness.
@@ -226,6 +227,16 @@ async def evaluate_against_baseline(
         turns_out_path.parent.mkdir(parents=True, exist_ok=True)
         turns_file = turns_out_path.open("w")
 
+    transcripts_file = None
+    if transcripts_out_path is not None:
+        transcripts_out_path = Path(transcripts_out_path)
+        transcripts_out_path.parent.mkdir(parents=True, exist_ok=True)
+        transcripts_file = transcripts_out_path.open("w")
+        transcripts_file.write(
+            f"Transcripts from greedy={greedy} eval over scenarios={scenarios} "
+            f"x {n_eps_per_scenario} eps. base_seed={base_seed}.\n\n"
+        )
+
     try:
         for scen in scenarios:
             scen_steps: List[dict] = []
@@ -258,6 +269,52 @@ async def evaluate_against_baseline(
                         assistant_response=result["response"],
                         force_escalation=(turn > 2),
                     )
+
+                # Per-episode transcript dump for offline reading. One markdown
+                # section per episode, with user message + analysis + therapist
+                # response + monitor verdict + judge score + coordinator routing
+                # for each turn. Kept separate from the per-turn JSONL so the
+                # diagnostic pipeline doesn't drag full text through every read.
+                if transcripts_file is not None:
+                    transcripts_file.write(f"\n===== {scen} / ep {ep} =====\n\n")
+                    for t in mas.turn_logs:
+                        turn_i = t.get("turn", "?")
+                        user_msg_t = t.get("user_message", "")
+                        analysis_t = t.get("analysis", {}) or {}
+                        response_t = t.get("response", "")
+                        monitor_t  = t.get("monitor", {}) or {}
+                        coord_fin  = t.get("coordinator_final", {}) or {}
+                        judge_t    = t.get("judge", {}) or {}
+                        revisions  = t.get("revisions", []) or []
+                        transcripts_file.write(f"--- turn {turn_i} ---\n")
+                        transcripts_file.write(f"PATIENT: {user_msg_t}\n\n")
+                        transcripts_file.write(
+                            f"COORD analysis: risk={analysis_t.get('risk_level','?')}; "
+                            f"focus={analysis_t.get('recommended_focus','')}; "
+                            f"concerns={analysis_t.get('key_concerns',[])}\n\n"
+                        )
+                        transcripts_file.write(f"THERAPIST: {response_t}\n\n")
+                        transcripts_file.write(
+                            f"MONITOR: safety_score={monitor_t.get('safety_score','?')}; "
+                            f"requires_revision={monitor_t.get('requires_revision','?')}; "
+                            f"concerns={monitor_t.get('concerns',[])}\n\n"
+                        )
+                        transcripts_file.write(
+                            f"COORD route: verdict={coord_fin.get('final_label','?')}; "
+                            f"rationale={coord_fin.get('rationale','')[:200]}\n\n"
+                        )
+                        transcripts_file.write(
+                            f"JUDGE: sigma={judge_t.get('safety_score','?'):.3f}; "
+                            f"therapeutic_quality={judge_t.get('therapeutic_quality','?')}\n\n"
+                            if isinstance(judge_t.get('safety_score'), (int, float))
+                            else f"JUDGE: sigma=?, therapeutic_quality=?\n\n"
+                        )
+                        transcripts_file.write(
+                            f"d={t.get('latent_distance','?')}; "
+                            f"c_consensus_post={c_consensus_from_distance(t.get('latent_distance'), t.get('external_safety'), tau=tau) if (t.get('latent_distance') is not None and t.get('external_safety') is not None) else '?'}; "
+                            f"n_revisions={len(revisions)}\n\n"
+                        )
+                    transcripts_file.flush()
 
                 for t in mas.turn_logs:
                     rec = {
@@ -307,6 +364,8 @@ async def evaluate_against_baseline(
     finally:
         if turns_file is not None:
             turns_file.close()
+        if transcripts_file is not None:
+            transcripts_file.close()
         # Restore original temperatures so subsequent training rollouts run
         # at the configured sampling temperatures, not the greedy override.
         for name, temp in _saved_temps.items():

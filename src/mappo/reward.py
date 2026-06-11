@@ -98,6 +98,23 @@ def r_therapy(judge_result: Dict, alpha_quality: float = 1.0) -> float:
 # Eq. 3 — joint reward
 # -----------------------------------------------------------------------------
 
+def _select_penalty(c_cons: float, sigma: float, penalty_form: str) -> float:
+    """Pick which scalar the β penalty applies to.
+
+    "c_consensus"   : the full Eq. 4 penalty exp(-d/τ)·(1-σ). Default.
+    "unsafety_only" : just (1-σ). Strips the latent-similarity gate so
+                      training cannot reduce the penalty by separating
+                      hidden states. Used by the ablation arm that tests
+                      whether the similarity term contributes any
+                      gradient signal.
+    """
+    if penalty_form == "c_consensus":
+        return c_cons
+    if penalty_form == "unsafety_only":
+        return 1.0 - float(sigma)
+    raise ValueError(f"unknown penalty_form: {penalty_form!r}")
+
+
 def r_joint(
     therapist_hidden: np.ndarray,
     monitor_hidden: np.ndarray,
@@ -106,21 +123,25 @@ def r_joint(
     beta: float = 1.0,
     tau: float = 0.1,
     alpha_quality: float = 1.0,
+    penalty_form: str = "c_consensus",
 ) -> Dict[str, float]:
     """Eq. 3 — joint reward used as PPO target.
 
-        R = r_therapy − β · c_consensus
+        R = r_therapy − β · penalty(penalty_form)
 
     Returns a dict so the trainer can log each component independently.
-    PPO uses the `r_joint` value; logging dashboards show r_therapy and
-    c_consensus separately.
+    `c_consensus` is always reported in the dict for logging consistency,
+    even when the active penalty is `unsafety_only`.
     """
-    rt = r_therapy(judge_result, alpha_quality=alpha_quality)
-    cc = c_consensus(therapist_hidden, monitor_hidden, sigma, tau=tau)
+    rt  = r_therapy(judge_result, alpha_quality=alpha_quality)
+    cc  = c_consensus(therapist_hidden, monitor_hidden, sigma, tau=tau)
+    pen = _select_penalty(cc, sigma, penalty_form)
     return {
         "r_therapy": rt,
         "c_consensus": cc,
-        "r_joint": rt - beta * cc,
+        "penalty": pen,
+        "penalty_form": penalty_form,
+        "r_joint": rt - beta * pen,
     }
 
 
@@ -131,16 +152,16 @@ def r_joint_from_distance(
     beta: float = 1.0,
     tau: float = 0.1,
     alpha_quality: float = 1.0,
+    penalty_form: str = "c_consensus",
 ) -> Dict[str, float]:
-    """Convenience: same as `r_joint` but takes the precomputed distance.
-
-    Useful for retroactive analysis on the baseline JSONLs (which store
-    `latent_distance` rather than raw hidden vectors).
-    """
-    rt = r_therapy(judge_result, alpha_quality=alpha_quality)
-    cc = c_consensus_from_distance(distance, sigma, tau=tau)
+    """Convenience: same as `r_joint` but takes the precomputed distance."""
+    rt  = r_therapy(judge_result, alpha_quality=alpha_quality)
+    cc  = c_consensus_from_distance(distance, sigma, tau=tau)
+    pen = _select_penalty(cc, sigma, penalty_form)
     return {
         "r_therapy": rt,
         "c_consensus": cc,
-        "r_joint": rt - beta * cc,
+        "penalty": pen,
+        "penalty_form": penalty_form,
+        "r_joint": rt - beta * pen,
     }

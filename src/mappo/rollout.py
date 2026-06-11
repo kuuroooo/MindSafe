@@ -258,6 +258,7 @@ async def collect_rollouts(
     beta: float = 1.0,
     tau: float = 0.1,
     alpha_quality: float = 1.0,
+    penalty_form: str = "c_consensus",
     base_seed: int = 0,
     monitor_chain_of_thought: bool = True,
 ) -> RolloutBuffer:
@@ -343,6 +344,7 @@ async def collect_rollouts(
                     sigma=sigma,
                     judge_result=judge_result,
                     beta=beta, tau=tau, alpha_quality=alpha_quality,
+                    penalty_form=penalty_form,
                 )
 
                 # ---- 8. centralized value ---------------------------------

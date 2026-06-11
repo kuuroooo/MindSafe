@@ -148,6 +148,8 @@ async def main_async(config: dict, out_dir: Path, args):
                     beta=config["mappo"]["reward"]["beta"],
                     tau=config["mappo"]["reward"]["tau"],
                     alpha_quality=config["mappo"]["reward"]["alpha_quality"],
+                    penalty_form=config["mappo"]["reward"].get(
+                        "penalty_form", "c_consensus"),
                     base_seed=config["seed"] + update_idx * 1000,
                 )
                 compute_advantages(

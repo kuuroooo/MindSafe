@@ -66,6 +66,8 @@ async def main_async(
     scenarios: list[str] | None,
     base_seed_override: int | None = None,
     greedy: bool = True,
+    n_eps_override: int | None = None,
+    dump_transcripts: bool = False,
 ):
     print(f"[reeval] Starting vLLM judge server (GPUs {config['judge_model']['server']['gpu_ids']})")
     server = start_judge_server(config["judge_model"])
@@ -90,7 +92,8 @@ async def main_async(
         print(f"[reeval] LoRA params per agent: {policy.n_trainable_params():,}")
 
         eval_scenarios = scenarios or config["scenarios"]
-        n_eps = config["mappo"]["eval_n_eps_per_scenario"]
+        n_eps = n_eps_override if n_eps_override is not None \
+                else config["mappo"]["eval_n_eps_per_scenario"]
         tau = config["mappo"]["reward"]["tau"]
 
         for ckpt_name in ckpt_names:
@@ -141,9 +144,17 @@ async def main_async(
                     else 10_000 + idx
                 )
 
+            transcripts_path = None
+            if dump_transcripts:
+                # Sibling .txt file next to the per-turn JSONL; same basename.
+                transcripts_path = turns_path.with_suffix("").with_suffix(".transcripts.txt")
+                if transcripts_path.exists():
+                    print(f"[reeval] (transcripts {transcripts_path.name} exists, overwriting)")
+
             print(f"[reeval] {ckpt_name} → running eval "
                   f"(scenarios={eval_scenarios}, n_eps={n_eps}, "
-                  f"seed={base_seed}, greedy={greedy})")
+                  f"seed={base_seed}, greedy={greedy}, "
+                  f"transcripts={'yes' if dump_transcripts else 'no'})")
             report = await evaluate_against_baseline(
                 policy=policy,
                 judge_client=judge_client,
@@ -156,6 +167,7 @@ async def main_async(
                 tau=tau,
                 base_seed=base_seed,
                 turns_out_path=turns_path,
+                transcripts_out_path=transcripts_path,
                 greedy=greedy,
             )
             save_eval_report(report, summary_path)
@@ -200,6 +212,17 @@ def main():
              "of greedy (T=0). Needed for the item-1 sanity check vs rollouts, "
              "which were collected under the stochastic policy.",
     )
+    parser.add_argument(
+        "--n-eps", type=int, default=None,
+        help="Override eval_n_eps_per_scenario from config. Useful for the "
+             "transcript dump where 1-2 eps/scenario is enough.",
+    )
+    parser.add_argument(
+        "--dump-transcripts", action="store_true",
+        help="Also write a sibling .transcripts.txt file with full text "
+             "(user message, analysis, response, monitor, judge, route) per "
+             "turn. For reading by hand to assess substantive vs stylistic gains.",
+    )
     args = parser.parse_args()
 
     config = load_config(args.config)
@@ -211,6 +234,8 @@ def main():
         config, run_dir, args.checkpoints, args.scenarios,
         base_seed_override=args.base_seed,
         greedy=not args.stochastic,
+        n_eps_override=args.n_eps,
+        dump_transcripts=args.dump_transcripts,
     ))
 
 

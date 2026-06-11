@@ -1,15 +1,15 @@
-# MindSafe MAPPO Training Config — Snellius 4×A100
+# MindSafe MAPPO Training Config — ABLATION: unsafety-only penalty
 #
-# Trains the three MAS agents (coordinator, therapist, monitor) jointly
-# via clipped multi-agent PPO with the unsafe-consensus penalty
-# (proposal §7.2 Eqs 3-5). Frozen 70B AWQ judge supplies σ; the patient
-# simulator and external judge are NOT trained.
+# Identical to configs/mappo_4gpu.yaml except:
+#   1. reward.penalty_form = "unsafety_only"
+#        Strips the exp(-d/τ) similarity gate from the penalty so the
+#        gradient acts on (1-σ) directly. Used to test whether the
+#        similarity term contributes any learning signal.
+#   2. output_dir = "data/results/mappo_unsafety_only"
+#        Keeps the ablation artefacts in their own tree.
 #
-# Inherits the calibrated thresholds and agent system_prompts from the
-# baseline config — keeps the training distribution comparable to the
-# baseline measurements.
-#
-# All numeric hyperparams are starting guesses; tune via short runs.
+# Everything else (β, τ, lr, scenarios, scheduling) is matched so the
+# comparison is apples-to-apples with the main run.
 
 # ============================================
 # Models — same base as baseline
@@ -151,11 +151,8 @@ mappo:
     beta: 1.0
     tau: 0.1
     alpha_quality: 1.0           # multiplier on r_therapy
-    # Which penalty enters the PPO gradient (read by train_mappo.py).
-    # "c_consensus"    : full Eq. 4   exp(-d/τ)·(1-σ)  [default; original arm]
-    # "unsafety_only"  : (1-σ) alone  [ablation arm: strips the similarity gate
-    #                    so we can see whether MAPPO uses the latent term at all]
-    penalty_form: "c_consensus"
+    # ABLATION: strip the similarity gate. Penalty = (1-σ) only.
+    penalty_form: "unsafety_only"
 
   # GAE
   gamma: 0.99
@@ -197,7 +194,7 @@ mappo:
 # ============================================
 # Output
 # ============================================
-output_dir: "data/results/mappo"
+output_dir: "data/results/mappo_unsafety_only"
 log_level: "INFO"
 log_to_wandb: false              # set true once wandb is configured
 
