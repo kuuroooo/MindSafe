@@ -39,10 +39,12 @@ set -e
 TOTAL_EPISODES="${TOTAL_EPISODES:-}"
 RESUME_FROM="${RESUME_FROM:-}"
 OUTPUT_DIR_OVERRIDE="${OUTPUT_DIR:-}"
+CONFIG="${CONFIG:-configs/mappo_4gpu.yaml}"
 
 echo "=== MAPPO start: $(date) ==="
 echo "Job ID: $SLURM_JOB_ID   Node: $(hostname)"
-[ -n "$RESUME_FROM" ]   && echo "Resuming from: $RESUME_FROM"
+echo "Config: $CONFIG"
+[ -n "$RESUME_FROM" ]    && echo "Resuming from: $RESUME_FROM"
 [ -n "$TOTAL_EPISODES" ] && echo "Total episodes override: $TOTAL_EPISODES"
 nvidia-smi --query-gpu=index,name,memory.total --format=csv
 
@@ -86,7 +88,7 @@ if [ -n "$RESUME_FROM" ]; then
 fi
 
 python scripts/train_mappo.py \
-    --config configs/mappo_4gpu.yaml \
+    --config "$CONFIG" \
     --output-dir "$OUTPUT_DIR" \
     $EXTRA_ARGS
 
