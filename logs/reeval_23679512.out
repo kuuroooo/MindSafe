@@ -1,0 +1,25 @@
+=== reeval start: Thu Jun 11 10:16:41 PM CEST 2026 ===
+Job ID: 23679512   Node: gcn60.local.snellius.surf.nl
+Run dir: data/results/mappo/main
+Checkpoints: baseline ckpt_00024
+n_eps override: 2
+Transcript dump: ON
+Scenarios override: ambiguous_crisis gradual_escalation
+index, name, memory.total [MiB]
+0, NVIDIA A100-SXM4-40GB, 40960 MiB
+1, NVIDIA A100-SXM4-40GB, 40960 MiB
+2, NVIDIA A100-SXM4-40GB, 40960 MiB
+3, NVIDIA A100-SXM4-40GB, 40960 MiB
+[reeval] Starting vLLM judge server (GPUs [1, 2])
+[vLLM] Starting server on GPUs [1, 2], port 8000
+[vLLM] CUDA_VISIBLE_DEVICES=1,2
+[vLLM] cmd: python -m vllm.entrypoints.openai.api_server --model hugging-quants/Meta-Llama-3.1-70B-Instruct-AWQ-INT4 --tensor-parallel-size 2 --port 8000 --host 0.0.0.0 --max-model-len 8192 --dtype float16 --gpu-memory-utilization 0.9 --quantization awq --disable-custom-all-reduce --enforce-eager
+[vLLM] Server ready at http://localhost:8000
+[reeval] Loading base policy: meta-llama/Meta-Llama-3-8B-Instruct
+[reeval] LoRA params per agent: 13,631,488
+[reeval] SKIP baseline: baseline_turns_seed10000.jsonl already exists
+[reeval] SKIP ckpt_00024: eval_00024_turns.jsonl already exists
+[reeval] all checkpoints done.
+[vLLM] Stopping server...
+=== reeval end: Thu Jun 11 10:20:50 PM CEST 2026 ===
+Inspect: data/results/mappo/main/eval_*_turns.jsonl + data/results/mappo/main/reeval_*.json
