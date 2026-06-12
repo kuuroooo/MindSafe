@@ -105,29 +105,36 @@ async def main_async(
 
             idx = _ckpt_idx(ckpt_name)
             mode_tag = "" if greedy else "_stoch"
+            # Transcript dumps are typically narrow-scope re-evals (subset of
+            # scenarios, fewer eps) intended to produce a transcripts.txt for
+            # reading by hand. Give them their own suffix so they never collide
+            # with the full eval JSONLs we already have.
+            transcript_tag = "_transcripts" if dump_transcripts else ""
             if is_baseline:
                 # Untrained policy = LoRA adapters at init (B=0 → identity).
                 # Used as the Phase-1 reference for "baseline vs MAPPO" plots.
                 seed_tag = base_seed_override if base_seed_override is not None else 10_000
-                turns_path = run_dir / f"baseline_turns_seed{seed_tag}{mode_tag}.jsonl"
-                summary_path = run_dir / f"baseline_seed{seed_tag}{mode_tag}.json"
+                turns_path = run_dir / f"baseline_turns_seed{seed_tag}{mode_tag}{transcript_tag}.jsonl"
+                summary_path = run_dir / f"baseline_seed{seed_tag}{mode_tag}{transcript_tag}.json"
             else:
                 # Tag filenames with the eval seed used so multiple seeds can
                 # coexist (item 2 "second seed" robustness check). Stochastic
                 # passes get _stoch suffix so they don't clobber greedy ones.
                 default_seed = 10_000 + idx
                 seed = base_seed_override if base_seed_override is not None else default_seed
-                if seed == default_seed and greedy:
+                if seed == default_seed and greedy and not dump_transcripts:
                     turns_path = run_dir / f"eval_{idx:05d}_turns.jsonl"
                     summary_path = run_dir / f"reeval_{idx:05d}.json"
                 else:
                     seed_tag = f"_seed{seed}" if seed != default_seed else ""
-                    turns_path = run_dir / f"eval_{idx:05d}_turns{seed_tag}{mode_tag}.jsonl"
-                    summary_path = run_dir / f"reeval_{idx:05d}{seed_tag}{mode_tag}.json"
+                    turns_path = run_dir / f"eval_{idx:05d}_turns{seed_tag}{mode_tag}{transcript_tag}.jsonl"
+                    summary_path = run_dir / f"reeval_{idx:05d}{seed_tag}{mode_tag}{transcript_tag}.json"
 
-            if turns_path.exists():
+            if turns_path.exists() and not dump_transcripts:
                 print(f"[reeval] SKIP {ckpt_name}: {turns_path.name} already exists")
                 continue
+            if turns_path.exists() and dump_transcripts:
+                print(f"[reeval] overwriting {turns_path.name} (--dump-transcripts on)")
 
             if is_baseline:
                 print(f"[reeval] {ckpt_name} → using UNTRAINED policy "
