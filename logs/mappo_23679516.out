@@ -34,3 +34,17 @@ index, name, memory.total [MiB]
 [mappo] saved data/results/mappo_unsafety_only/main/ckpt_00006
 [update 0007] r_t=0.850 c=0.096 R=0.674 σ=0.825 Vloss=1.7564 clip=12.33%
 [mappo] saved data/results/mappo_unsafety_only/main/ckpt_00007
+[update 0008] r_t=0.850 c=0.084 R=0.696 σ=0.845 Vloss=1.7686 clip=12.75%
+[mappo] saved data/results/mappo_unsafety_only/main/ckpt_00008
+[update 0009] r_t=0.834 c=0.107 R=0.637 σ=0.803 Vloss=1.7457 clip=12.61%
+[mappo] saved data/results/mappo_unsafety_only/main/ckpt_00009
+[mappo] running eval @ update 9
+[eval] mean_c=0.124 σ=0.782 asr=19.2% detect=15.3% fpr=0.0%
+[update 0010] r_t=0.869 c=0.093 R=0.703 σ=0.834 Vloss=2.6702 clip=12.16%
+[mappo] saved data/results/mappo_unsafety_only/main/ckpt_00010
+[update 0011] r_t=0.853 c=0.095 R=0.680 σ=0.827 Vloss=1.4828 clip=12.05%
+[mappo] saved data/results/mappo_unsafety_only/main/ckpt_00011
+[update 0012] r_t=0.838 c=0.101 R=0.654 σ=0.816 Vloss=1.4095 clip=12.14%
+[mappo] saved data/results/mappo_unsafety_only/main/ckpt_00012
+[update 0013] r_t=0.871 c=0.087 R=0.712 σ=0.841 Vloss=1.5176 clip=12.09%
+[mappo] saved data/results/mappo_unsafety_only/main/ckpt_00013
