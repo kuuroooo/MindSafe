@@ -68,6 +68,7 @@ async def main_async(
     greedy: bool = True,
     n_eps_override: int | None = None,
     dump_transcripts: bool = False,
+    max_regenerations: int = 3,
 ):
     print(f"[reeval] Starting vLLM judge server (GPUs {config['judge_model']['server']['gpu_ids']})")
     server = start_judge_server(config["judge_model"])
@@ -110,25 +111,39 @@ async def main_async(
             # reading by hand. Give them their own suffix so they never collide
             # with the full eval JSONLs we already have.
             transcript_tag = "_transcripts" if dump_transcripts else ""
+            # max_regenerations != 3 → tag the filenames so e.g. the
+            # first-attempt (mr=1) eval doesn't clobber the post-revision (mr=3)
+            # eval. mr=1 is the training-aligned eval (no revision loop).
+            regen_tag = f"_mr{max_regenerations}" if max_regenerations != 3 else ""
+            # Larger n_eps also gets its own tag so it doesn't clobber the
+            # n_eps=5 standard runs.
+            n_eps_default = config["mappo"]["eval_n_eps_per_scenario"]
+            n_eps_tag = (
+                f"_neps{n_eps_override}"
+                if n_eps_override is not None and n_eps_override != n_eps_default
+                else ""
+            )
+            extra_tag = f"{mode_tag}{transcript_tag}{regen_tag}{n_eps_tag}"
             if is_baseline:
                 # Untrained policy = LoRA adapters at init (B=0 → identity).
                 # Used as the Phase-1 reference for "baseline vs MAPPO" plots.
                 seed_tag = base_seed_override if base_seed_override is not None else 10_000
-                turns_path = run_dir / f"baseline_turns_seed{seed_tag}{mode_tag}{transcript_tag}.jsonl"
-                summary_path = run_dir / f"baseline_seed{seed_tag}{mode_tag}{transcript_tag}.json"
+                turns_path = run_dir / f"baseline_turns_seed{seed_tag}{extra_tag}.jsonl"
+                summary_path = run_dir / f"baseline_seed{seed_tag}{extra_tag}.json"
             else:
                 # Tag filenames with the eval seed used so multiple seeds can
                 # coexist (item 2 "second seed" robustness check). Stochastic
                 # passes get _stoch suffix so they don't clobber greedy ones.
                 default_seed = 10_000 + idx
                 seed = base_seed_override if base_seed_override is not None else default_seed
-                if seed == default_seed and greedy and not dump_transcripts:
+                if (seed == default_seed and greedy and not dump_transcripts
+                        and not regen_tag and not n_eps_tag):
                     turns_path = run_dir / f"eval_{idx:05d}_turns.jsonl"
                     summary_path = run_dir / f"reeval_{idx:05d}.json"
                 else:
                     seed_tag = f"_seed{seed}" if seed != default_seed else ""
-                    turns_path = run_dir / f"eval_{idx:05d}_turns{seed_tag}{mode_tag}{transcript_tag}.jsonl"
-                    summary_path = run_dir / f"reeval_{idx:05d}{seed_tag}{mode_tag}{transcript_tag}.json"
+                    turns_path = run_dir / f"eval_{idx:05d}_turns{seed_tag}{extra_tag}.jsonl"
+                    summary_path = run_dir / f"reeval_{idx:05d}{seed_tag}{extra_tag}.json"
 
             if turns_path.exists() and not dump_transcripts:
                 print(f"[reeval] SKIP {ckpt_name}: {turns_path.name} already exists")
@@ -161,6 +176,7 @@ async def main_async(
             print(f"[reeval] {ckpt_name} → running eval "
                   f"(scenarios={eval_scenarios}, n_eps={n_eps}, "
                   f"seed={base_seed}, greedy={greedy}, "
+                  f"max_regenerations={max_regenerations}, "
                   f"transcripts={'yes' if dump_transcripts else 'no'})")
             report = await evaluate_against_baseline(
                 policy=policy,
@@ -176,6 +192,7 @@ async def main_async(
                 turns_out_path=turns_path,
                 transcripts_out_path=transcripts_path,
                 greedy=greedy,
+                max_regenerations=max_regenerations,
             )
             save_eval_report(report, summary_path)
             print(
@@ -230,6 +247,12 @@ def main():
              "(user message, analysis, response, monitor, judge, route) per "
              "turn. For reading by hand to assess substantive vs stylistic gains.",
     )
+    parser.add_argument(
+        "--max-regenerations", type=int, default=3,
+        help="Coordinator revision loop cap. Default 3 = the deployment "
+             "harness. Set to 1 for the FIRST-ATTEMPT eval that matches what "
+             "training rollouts see (training has no revision loop).",
+    )
     args = parser.parse_args()
 
     config = load_config(args.config)
@@ -243,6 +266,7 @@ def main():
         greedy=not args.stochastic,
         n_eps_override=args.n_eps,
         dump_transcripts=args.dump_transcripts,
+        max_regenerations=args.max_regenerations,
     ))
 
 

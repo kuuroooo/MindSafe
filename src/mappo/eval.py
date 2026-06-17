@@ -158,6 +158,7 @@ async def evaluate_against_baseline(
     turns_out_path: Optional[Path] = None,
     transcripts_out_path: Optional[Path] = None,
     greedy: bool = True,
+    max_regenerations: int = 3,
 ) -> Dict:
     """Run the trained policy through the baseline eval harness.
 
@@ -179,6 +180,13 @@ async def evaluate_against_baseline(
     Patient sim and judge keep their existing temperatures — the patient
     needs variety to test the policy, and the judge already uses T=0.
     The original temperatures are restored on exit.
+
+    `max_regenerations` controls the coordinator's revision loop. Default 3
+    matches the deployment harness. Set to 1 for "first-attempt" eval that
+    matches what training rollouts actually see (training has no revision
+    loop). With max_regenerations=1 the coordinator's "revise" verdict is
+    treated as terminal — the first-attempt response is what gets judged
+    and recorded.
     """
     from src.agents.external_judge import ExternalJudgeAgent
     from src.mas.instrumented_mas import InstrumentedMAS
@@ -211,7 +219,7 @@ async def evaluate_against_baseline(
         external_judge=judge,
         consensus_metrics=consensus_metrics,
         config={
-            "max_regenerations": 3,
+            "max_regenerations": int(max_regenerations),
             "distance_threshold": distance_threshold,
             "external_safety_threshold": safety_threshold,
         },

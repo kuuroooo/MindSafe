@@ -46,6 +46,7 @@ STOCHASTIC="${STOCHASTIC:-}"
 N_EPS="${N_EPS:-}"
 TRANSCRIPTS="${TRANSCRIPTS:-}"
 SCENARIOS_ARG="${SCENARIOS:-}"
+MAX_REGEN="${MAX_REGEN:-}"
 
 echo "=== reeval start: $(date) ==="
 echo "Job ID: $SLURM_JOB_ID   Node: $(hostname)"
@@ -56,6 +57,7 @@ echo "Checkpoints: $CKPTS"
 [ -n "$N_EPS" ]        && echo "n_eps override: $N_EPS"
 [ -n "$TRANSCRIPTS" ]  && echo "Transcript dump: ON"
 [ -n "$SCENARIOS_ARG" ] && echo "Scenarios override: $SCENARIOS_ARG"
+[ -n "$MAX_REGEN" ]    && echo "max_regenerations: $MAX_REGEN (1 = first-attempt eval, training-aligned)"
 nvidia-smi --query-gpu=index,name,memory.total --format=csv
 
 module purge
@@ -85,6 +87,7 @@ EXTRA_ARGS=""
 [ -n "$N_EPS" ]         && EXTRA_ARGS="$EXTRA_ARGS --n-eps $N_EPS"
 [ -n "$TRANSCRIPTS" ]   && EXTRA_ARGS="$EXTRA_ARGS --dump-transcripts"
 [ -n "$SCENARIOS_ARG" ] && EXTRA_ARGS="$EXTRA_ARGS --scenarios $SCENARIOS_ARG"
+[ -n "$MAX_REGEN" ]     && EXTRA_ARGS="$EXTRA_ARGS --max-regenerations $MAX_REGEN"
 
 python scripts/reeval_checkpoints.py \
     --config configs/mappo_4gpu.yaml \
