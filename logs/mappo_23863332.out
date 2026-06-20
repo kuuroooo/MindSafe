@@ -1,0 +1,53 @@
+=== MAPPO start: Mon Jun 15 11:27:39 AM CEST 2026 ===
+Job ID: 23863332   Node: gcn40.local.snellius.surf.nl
+Config: configs/mappo_4gpu_unsafetyonly.yaml
+Resuming from: data/results/mappo_unsafety_only/main/ckpt_00013
+index, name, memory.total [MiB]
+0, NVIDIA A100-SXM4-40GB, 40960 MiB
+1, NVIDIA A100-SXM4-40GB, 40960 MiB
+2, NVIDIA A100-SXM4-40GB, 40960 MiB
+3, NVIDIA A100-SXM4-40GB, 40960 MiB
+[mappo] Output dir: data/results/mappo_unsafety_only/main
+[mappo] Scenarios: ['ambiguous_crisis', 'gradual_escalation', 'delusion_reinforcement', 'harmful_coping', 'dependency_seeking']
+[mappo] eps/update: 20 | n_updates: 800
+[mappo] Starting vLLM judge server (GPUs [1, 2])
+[vLLM] Starting server on GPUs [1, 2], port 8000
+[vLLM] CUDA_VISIBLE_DEVICES=1,2
+[vLLM] cmd: python -m vllm.entrypoints.openai.api_server --model hugging-quants/Meta-Llama-3.1-70B-Instruct-AWQ-INT4 --tensor-parallel-size 2 --port 8000 --host 0.0.0.0 --max-model-len 8192 --dtype float16 --gpu-memory-utilization 0.9 --quantization awq --disable-custom-all-reduce --enforce-eager
+[vLLM] Server ready at http://localhost:8000
+[mappo] Loading policy: meta-llama/Meta-Llama-3-8B-Instruct
+[mappo] Trainable LoRA params: 13,631,488
+[mappo] Resuming from data/results/mappo_unsafety_only/main/ckpt_00013
+[mappo] Resumed at update_idx=13; next update will be 14.
+[update 0014] r_t=0.852 c=0.096 R=0.678 σ=0.826 Vloss=1.3065 clip=12.39%
+[mappo] saved data/results/mappo_unsafety_only/main/ckpt_00014
+[mappo] running eval @ update 14
+[eval] mean_c=0.156 σ=0.731 asr=26.9% detect=26.7% fpr=0.0%
+[update 0015] r_t=0.834 c=0.106 R=0.636 σ=0.801 Vloss=1.6476 clip=12.26%
+[mappo] saved data/results/mappo_unsafety_only/main/ckpt_00015
+[update 0016] r_t=0.832 c=0.113 R=0.626 σ=0.794 Vloss=1.8461 clip=12.33%
+[mappo] saved data/results/mappo_unsafety_only/main/ckpt_00016
+[update 0017] r_t=0.849 c=0.110 R=0.650 σ=0.801 Vloss=1.8678 clip=12.26%
+[mappo] saved data/results/mappo_unsafety_only/main/ckpt_00017
+[update 0018] r_t=0.835 c=0.094 R=0.664 σ=0.828 Vloss=1.0735 clip=12.39%
+[mappo] saved data/results/mappo_unsafety_only/main/ckpt_00018
+[update 0019] r_t=0.842 c=0.103 R=0.652 σ=0.810 Vloss=1.5937 clip=12.31%
+[mappo] saved data/results/mappo_unsafety_only/main/ckpt_00019
+[mappo] running eval @ update 19
+[eval] mean_c=0.151 σ=0.735 asr=28.3% detect=18.9% fpr=0.0%
+[update 0020] r_t=0.830 c=0.108 R=0.634 σ=0.804 Vloss=1.5846 clip=12.20%
+[mappo] saved data/results/mappo_unsafety_only/main/ckpt_00020
+[update 0021] r_t=0.851 c=0.104 R=0.656 σ=0.805 Vloss=1.5755 clip=12.25%
+[mappo] saved data/results/mappo_unsafety_only/main/ckpt_00021
+[update 0022] r_t=0.853 c=0.104 R=0.665 σ=0.812 Vloss=1.3696 clip=12.36%
+[mappo] saved data/results/mappo_unsafety_only/main/ckpt_00022
+[update 0023] r_t=0.869 c=0.085 R=0.713 σ=0.843 Vloss=1.3412 clip=12.07%
+[mappo] saved data/results/mappo_unsafety_only/main/ckpt_00023
+[update 0024] r_t=0.874 c=0.088 R=0.712 σ=0.838 Vloss=1.4676 clip=11.99%
+[mappo] saved data/results/mappo_unsafety_only/main/ckpt_00024
+[mappo] running eval @ update 24
+[eval] mean_c=0.137 σ=0.767 asr=22.9% detect=36.0% fpr=0.0%
+[update 0025] r_t=0.842 c=0.100 R=0.659 σ=0.817 Vloss=1.7111 clip=12.20%
+[mappo] saved data/results/mappo_unsafety_only/main/ckpt_00025
+[update 0026] r_t=0.870 c=0.084 R=0.715 σ=0.845 Vloss=0.9911 clip=12.07%
+[mappo] saved data/results/mappo_unsafety_only/main/ckpt_00026

@@ -1,0 +1,5 @@
+/home/kwang/mindsafe_env/lib/python3.11/site-packages/transformers/utils/hub.py:110: FutureWarning: Using `TRANSFORMERS_CACHE` is deprecated and will be removed in v5 of Transformers. Use `HF_HOME` instead.
+  warnings.warn(
+Loading checkpoint shards:   0%|          | 0/4 [00:00<?, ?it/s]Loading checkpoint shards:  25%|██▌       | 1/4 [00:06<00:18,  6.33s/it]Loading checkpoint shards:  50%|█████     | 2/4 [00:12<00:12,  6.41s/it]Loading checkpoint shards:  75%|███████▌  | 3/4 [00:18<00:06,  6.31s/it]Loading checkpoint shards: 100%|██████████| 4/4 [00:20<00:00,  4.46s/it]Loading checkpoint shards: 100%|██████████| 4/4 [00:20<00:00,  5.15s/it]
+The following generation flags are not valid and may be ignored: ['temperature', 'top_p']. Set `TRANSFORMERS_VERBOSITY=info` for more details.
+[2026-06-18T19:13:37.016] error: *** JOB 23966155 ON gcn27 CANCELLED AT 2026-06-18T19:13:37 DUE TO TIME LIMIT ***
