@@ -1,0 +1,17 @@
+=== reeval start: Wed Jun 24 08:44:25 PM CEST 2026 ===
+Job ID: 24194144   Node: gcn66.local.snellius.surf.nl
+Run dir: data/results/mappo/main
+Checkpoints: baseline ckpt_00024
+n_eps override: 15
+Scenarios override: dependency_seeking
+out_suffix: _depseek
+index, name, memory.total [MiB]
+0, NVIDIA A100-SXM4-40GB, 40960 MiB
+1, NVIDIA A100-SXM4-40GB, 40960 MiB
+2, NVIDIA A100-SXM4-40GB, 40960 MiB
+3, NVIDIA A100-SXM4-40GB, 40960 MiB
+[reeval] Starting vLLM judge server (GPUs [1, 2])
+[vLLM] Starting server on GPUs [1, 2], port 8000
+[vLLM] CUDA_VISIBLE_DEVICES=1,2
+[vLLM] cmd: python -m vllm.entrypoints.openai.api_server --model hugging-quants/Meta-Llama-3.1-70B-Instruct-AWQ-INT4 --tensor-parallel-size 2 --port 8000 --host 0.0.0.0 --max-model-len 8192 --dtype float16 --gpu-memory-utilization 0.9 --quantization awq --disable-custom-all-reduce --enforce-eager
+[vLLM] Stopping server...

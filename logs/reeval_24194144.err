@@ -1,0 +1,26 @@
+/home/kwang/mindsafe_env/lib/python3.11/site-packages/transformers/utils/hub.py:110: FutureWarning: Using `TRANSFORMERS_CACHE` is deprecated and will be removed in v5 of Transformers. Use `HF_HOME` instead.
+  warnings.warn(
+Traceback (most recent call last):
+  File "/gpfs/home4/kwang/mindsafe/scripts/reeval_checkpoints.py", line 282, in <module>
+    main()
+  File "/gpfs/home4/kwang/mindsafe/scripts/reeval_checkpoints.py", line 270, in main
+    asyncio.run(main_async(
+  File "/sw/arch/RHEL8/EB_production/2023/software/Python/3.11.3-GCCcore-12.3.0/lib/python3.11/asyncio/runners.py", line 190, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "/sw/arch/RHEL8/EB_production/2023/software/Python/3.11.3-GCCcore-12.3.0/lib/python3.11/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/sw/arch/RHEL8/EB_production/2023/software/Python/3.11.3-GCCcore-12.3.0/lib/python3.11/asyncio/base_events.py", line 653, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "/gpfs/home4/kwang/mindsafe/scripts/reeval_checkpoints.py", line 75, in main_async
+    server = start_judge_server(config["judge_model"])
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/gpfs/home4/kwang/mindsafe/src/models/model_loader.py", line 43, in start_judge_server
+    server.start()
+  File "/gpfs/home4/kwang/mindsafe/src/models/vllm_http_client.py", line 82, in start
+    self._wait_ready()
+  File "/gpfs/home4/kwang/mindsafe/src/models/vllm_http_client.py", line 102, in _wait_ready
+    raise TimeoutError(
+TimeoutError: vLLM server did not become ready within 1200s. See logs at logs/vllm_server.log.
