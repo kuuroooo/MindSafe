@@ -69,6 +69,7 @@ async def main_async(
     n_eps_override: int | None = None,
     dump_transcripts: bool = False,
     max_regenerations: int = 3,
+    out_suffix: str = "",
 ):
     print(f"[reeval] Starting vLLM judge server (GPUs {config['judge_model']['server']['gpu_ids']})")
     server = start_judge_server(config["judge_model"])
@@ -123,7 +124,7 @@ async def main_async(
                 if n_eps_override is not None and n_eps_override != n_eps_default
                 else ""
             )
-            extra_tag = f"{mode_tag}{transcript_tag}{regen_tag}{n_eps_tag}"
+            extra_tag = f"{mode_tag}{transcript_tag}{regen_tag}{n_eps_tag}{out_suffix}"
             if is_baseline:
                 # Untrained policy = LoRA adapters at init (B=0 → identity).
                 # Used as the Phase-1 reference for "baseline vs MAPPO" plots.
@@ -137,7 +138,7 @@ async def main_async(
                 default_seed = 10_000 + idx
                 seed = base_seed_override if base_seed_override is not None else default_seed
                 if (seed == default_seed and greedy and not dump_transcripts
-                        and not regen_tag and not n_eps_tag):
+                        and not regen_tag and not n_eps_tag and not out_suffix):
                     turns_path = run_dir / f"eval_{idx:05d}_turns.jsonl"
                     summary_path = run_dir / f"reeval_{idx:05d}.json"
                 else:
@@ -253,6 +254,12 @@ def main():
              "harness. Set to 1 for the FIRST-ATTEMPT eval that matches what "
              "training rollouts see (training has no revision loop).",
     )
+    parser.add_argument(
+        "--out-suffix", type=str, default="",
+        help="Extra suffix appended to all output filenames. Use to keep "
+             "parallel scenario-subset reruns from clobbering each other, "
+             "e.g. --out-suffix _depseek for a dependency_seeking-only run.",
+    )
     args = parser.parse_args()
 
     config = load_config(args.config)
@@ -267,6 +274,7 @@ def main():
         n_eps_override=args.n_eps,
         dump_transcripts=args.dump_transcripts,
         max_regenerations=args.max_regenerations,
+        out_suffix=args.out_suffix,
     ))
 
 
