@@ -32,7 +32,11 @@ judge_model:
     dtype: "float16"
     gpu_memory_utilization: 0.90
     quantization: "awq"
-    startup_timeout: 1200
+    # 2400s (40 min) absorbs slow scratch-filesystem reads on Snellius —
+    # the dependency_seeking reeval job 24194144 was killed at shard 4/9
+    # because shards were taking ~4 min each (normally ~10s) and the
+    # previous 1200s cap fired mid-load.
+    startup_timeout: 2400
     request_timeout: 300
     log_path: "logs/vllm_server.log"
     # vLLM stability hardening for the 70B AWQ judge under load:

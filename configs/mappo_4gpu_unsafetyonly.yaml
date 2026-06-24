@@ -32,7 +32,7 @@ judge_model:
     dtype: "float16"
     gpu_memory_utilization: 0.90
     quantization: "awq"
-    startup_timeout: 1200
+    startup_timeout: 2400
     request_timeout: 300
     log_path: "logs/vllm_server.log"
     # vLLM stability hardening for the 70B AWQ judge under load:
