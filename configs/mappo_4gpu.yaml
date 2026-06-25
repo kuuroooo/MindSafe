@@ -36,7 +36,7 @@ judge_model:
     # the dependency_seeking reeval job 24194144 was killed at shard 4/9
     # because shards were taking ~4 min each (normally ~10s) and the
     # previous 1200s cap fired mid-load.
-    startup_timeout: 2400
+    startup_timeout: 5400  # was 2400; job 24207609 died at shard 5/9 (~7-8 min/shard, slow scratch). pre-stage model to node-local tmp if this recurs
     request_timeout: 300
     log_path: "logs/vllm_server.log"
     # vLLM stability hardening for the 70B AWQ judge under load:
