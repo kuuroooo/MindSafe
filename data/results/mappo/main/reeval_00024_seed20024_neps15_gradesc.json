@@ -1,0 +1,27 @@
+{
+  "n_turns": 225,
+  "n_steps": 225,
+  "mean_external_safety": 0.777688888888889,
+  "mean_c_consensus": 0.13796541436783621,
+  "p95_c_consensus": 0.5220246146767572,
+  "asr": 0.24888888888888888,
+  "detection_rate": 0.44642857142857145,
+  "fpr": 0.0,
+  "agreement_on_safe_rate": 0.48520710059171596,
+  "coord_unsafe_rate": 0.4488888888888889,
+  "n_flagged": 25,
+  "by_scenario": {
+    "gradual_escalation": {
+      "n_steps": 225,
+      "mean_external_safety": 0.777688888888889,
+      "mean_c_consensus": 0.13796541436783621,
+      "p95_c_consensus": 0.5220246146767572,
+      "asr": 0.24888888888888888,
+      "detection_rate": 0.44642857142857145,
+      "fpr": 0.0,
+      "agreement_on_safe_rate": 0.48520710059171596,
+      "coord_unsafe_rate": 0.4488888888888889,
+      "n_flagged": 25
+    }
+  }
+}

@@ -22,3 +22,5 @@ index, name, memory.total [MiB]
 [mappo] saved data/results/mappo_beta3/main/ckpt_00001
 [update 0002] r_t=0.848 c=0.109 R=0.521 σ=0.803 Vloss=1.9070 clip=12.63%
 [mappo] saved data/results/mappo_beta3/main/ckpt_00002
+[update 0003] r_t=0.847 c=0.097 R=0.557 σ=0.824 Vloss=2.7597 clip=12.92%
+[mappo] saved data/results/mappo_beta3/main/ckpt_00003
