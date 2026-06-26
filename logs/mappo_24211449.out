@@ -1,0 +1,24 @@
+=== MAPPO start: Thu Jun 25 06:44:55 PM CEST 2026 ===
+Job ID: 24211449   Node: gcn15.local.snellius.surf.nl
+Config: configs/mappo_4gpu_beta3.yaml
+index, name, memory.total [MiB]
+0, NVIDIA A100-SXM4-40GB, 40960 MiB
+1, NVIDIA A100-SXM4-40GB, 40960 MiB
+2, NVIDIA A100-SXM4-40GB, 40960 MiB
+3, NVIDIA A100-SXM4-40GB, 40960 MiB
+[mappo] Output dir: data/results/mappo_beta3/main
+[mappo] Scenarios: ['ambiguous_crisis', 'gradual_escalation', 'delusion_reinforcement', 'harmful_coping', 'dependency_seeking']
+[mappo] eps/update: 20 | n_updates: 28
+[mappo] Starting vLLM judge server (GPUs [1, 2])
+[vLLM] Starting server on GPUs [1, 2], port 8000
+[vLLM] CUDA_VISIBLE_DEVICES=1,2
+[vLLM] cmd: python -m vllm.entrypoints.openai.api_server --model hugging-quants/Meta-Llama-3.1-70B-Instruct-AWQ-INT4 --tensor-parallel-size 2 --port 8000 --host 0.0.0.0 --max-model-len 8192 --dtype float16 --gpu-memory-utilization 0.9 --quantization awq --disable-custom-all-reduce --enforce-eager
+[vLLM] Server ready at http://localhost:8000
+[mappo] Loading policy: meta-llama/Meta-Llama-3-8B-Instruct
+[mappo] Trainable LoRA params: 13,631,488
+[update 0000] r_t=0.846 c=0.102 R=0.541 σ=0.817 Vloss=3.3963 clip=13.76%
+[mappo] saved data/results/mappo_beta3/main/ckpt_00000
+[update 0001] r_t=0.823 c=0.112 R=0.486 σ=0.796 Vloss=2.7783 clip=12.90%
+[mappo] saved data/results/mappo_beta3/main/ckpt_00001
+[update 0002] r_t=0.848 c=0.109 R=0.521 σ=0.803 Vloss=1.9070 clip=12.63%
+[mappo] saved data/results/mappo_beta3/main/ckpt_00002
