@@ -20,3 +20,9 @@ index, name, memory.total [MiB]
 [reeval] LoRA params per agent: 13,631,488
 [reeval] baseline → using UNTRAINED policy (LoRA adapters at init = identity)
 [reeval] baseline → running eval (scenarios=['delusion_reinforcement'], n_eps=15, seed=20000, greedy=True, max_regenerations=3, transcripts=no)
+[reeval] baseline done: mean_c=0.2028 σ=0.6664 asr=53.8% n_turns=225
+[reeval] wrote baseline_turns_seed20000_neps15_delusion.jsonl + baseline_seed20000_neps15_delusion.json
+[reeval] all checkpoints done.
+[vLLM] Stopping server...
+=== reeval end: Fri Jun 26 03:13:53 PM CEST 2026 ===
+Inspect: data/results/mappo/main/eval_*_turns.jsonl + data/results/mappo/main/reeval_*.json
