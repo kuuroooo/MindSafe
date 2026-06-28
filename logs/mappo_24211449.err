@@ -2,3 +2,4 @@
   warnings.warn(
 Loading checkpoint shards:   0%|          | 0/4 [00:00<?, ?it/s]Loading checkpoint shards:  25%|██▌       | 1/4 [02:43<08:10, 163.60s/it]Loading checkpoint shards:  50%|█████     | 2/4 [04:18<04:06, 123.07s/it]Loading checkpoint shards:  75%|███████▌  | 3/4 [06:20<02:02, 122.47s/it]Loading checkpoint shards: 100%|██████████| 4/4 [07:10<00:00, 94.04s/it] Loading checkpoint shards: 100%|██████████| 4/4 [07:10<00:00, 107.63s/it]
 The following generation flags are not valid and may be ignored: ['temperature', 'top_p']. Set `TRANSFORMERS_VERBOSITY=info` for more details.
+[2026-06-28T18:44:57.350] error: *** JOB 24211449 ON gcn15 CANCELLED AT 2026-06-28T18:44:57 DUE TO TIME LIMIT ***
