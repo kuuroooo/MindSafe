@@ -54,7 +54,7 @@ python3 scripts/consensus_penalty.py \
     data/results/baseline/sweep_20260425_165007 data/results/baseline/run_22408247 \
     --released-only --top-k 5 --by-scenario
 
-# MAPPO (tag mappo-v1; eval logs already committed)
+# MAPPO 
 python3 scripts/analyze_mappo_diagnostic.py --run-dir data/results/mappo/main
 # regenerate the eval logs from checkpoints: sbatch slurm/reeval_checkpoints.job
 ```
