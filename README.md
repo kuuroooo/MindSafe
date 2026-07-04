@@ -46,7 +46,7 @@ sbatch slurm/run_baseline_compromised_monitor.job   # insider-threat (compromise
 
 Both runners take `--config` / `--output-dir` / `--arms`; see the `slurm/*.job` files for exact flags.
 
-## Reproduce
+## Reproduce the reported numbers (from committed logs)
 
 ```bash
 # baseline (tag baseline-v1)
