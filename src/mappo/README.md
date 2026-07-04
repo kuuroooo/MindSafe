@@ -1,40 +1,27 @@
-# MindSafe — MAPPO training package
+# MindSafe — MAPPO training
 
-Multi-agent PPO (proposal §7.2) that trains LoRA adapters for the three policy
-agents — coordinator, therapist, monitor — to suppress the unsafe-consensus
-failure mode. It reuses the frozen baseline (external judge, MAS eval harness,
-patient simulator, consensus metric) and adds its own trainable policies.
-
-## Objective
-
-Maximize a joint reward that trades therapeutic utility against the
-unsafe-consensus penalty, with a single (centralized) advantage shared across
-the three agents:
-
-```
-r_joint     = r_therapy − β · c_consensus                    (Eq. 3)
-c_consensus = exp(−d(h_therapist, h_monitor) / τ) · (1 − σ)  (Eq. 4)
-```
-
-The penalty is high when the agents agree in latent space (small distance `d`)
-while the judge rates the turn unsafe (small `σ`).
+Multi-agent PPO (proposal §7.2): trains LoRA adapters for the three agents
+(coordinator, therapist, monitor) with a shared safety reward
+(`r_therapy − β·c_consensus`) and one centralized advantage across all three, to
+cut the unsafe-consensus failure mode. Reuses the frozen baseline (judge, eval
+harness, patient simulator, consensus metric).
 
 ## Modules
 
-| Module | Role |
+| file | what |
 |---|---|
-| `policy.py`    | LoRA-adapter policies; `generate` (rollout) + `compute_log_probs` (PPO ratio). |
-| `reward.py`    | `c_consensus` (Eq. 4), `r_therapy`, `r_joint` (Eq. 3). |
-| `value_net.py` | Centralized value head `V(s)` for GAE. |
-| `rollout.py`   | `RolloutBuffer`, `collect_rollouts`, GAE. |
-| `trainer.py`   | `MAPPOTrainer` — clipped-PPO update loop, checkpoints. |
-| `eval.py`      | `evaluate_against_baseline` — periodic baseline-comparable eval. |
+| `policy.py`    | LoRA policies — `generate`, `compute_log_probs`. |
+| `reward.py`    | `c_consensus`, `r_therapy`, `r_joint` (proposal Eq. 3–4). |
+| `value_net.py` | centralized value head for GAE. |
+| `rollout.py`   | rollout collection + GAE. |
+| `trainer.py`   | clipped-PPO update loop + checkpoints. |
+| `eval.py`      | eval against the frozen baseline. |
 
 ## Run
 
 ```
-python scripts/train_mappo.py --config configs/mappo_4gpu.yaml --output-dir data/results/mappo/main
+sbatch slurm/train_mappo.job
+# or: python scripts/train_mappo.py --config configs/mappo_4gpu.yaml --output-dir data/results/mappo/main
 ```
 
-Reproduce commands are in the top-level `README.md`; reported numbers use
-checkpoint u24 of `data/results/mappo/main/`.
+Results + reproduce commands: top-level `README.md`. Reported numbers use checkpoint u24.
