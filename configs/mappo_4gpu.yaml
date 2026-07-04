@@ -138,8 +138,11 @@ seed: 42
 # MAPPO hyperparameters (proposal §7.2)
 # ============================================
 mappo:
-  # Total training budget (episodes, not updates).
-  # ~16 eps/update × 1000 updates = 16k episodes.
+  # Total training budget (episodes, not updates); a nominal ceiling.
+  # 20 eps/update (4 × 5 scenarios), so 16000 episodes = 800 updates if run in full.
+  # NOTE: the reported results come from checkpoint u24 (28 updates / 560 episodes).
+  # Training was stopped early by the compute budget and never reached 16000.
+  # To reproduce the paper's numbers, evaluate checkpoint u24 (or set total_episodes: 560).
   total_episodes: 16000
 
   # Episodes collected per PPO update, summed across all scenarios.

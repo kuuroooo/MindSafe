@@ -148,8 +148,9 @@ seed: 42
 # ============================================
 mappo:
   # Total training budget (episodes, not updates).
-  # ~16 eps/update × 1000 updates = 16k episodes.
-  total_episodes: 560  # matched to the main beta=1.0 run (28 updates)
+  # 20 eps/update (4 × 5 scenarios) × 28 updates = 560 episodes,
+  # matched to the main beta=1.0 run length.
+  total_episodes: 560
 
   # Episodes collected per PPO update, summed across all scenarios.
   # n_episodes_per_scenario_per_update * len(scenarios) = total per update.
