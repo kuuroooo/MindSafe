@@ -20,7 +20,7 @@ Tags: `baseline-v1` = baseline results only; `mappo-v1` = full thesis (baseline 
 
 ```bash
 pip install -r requirements.txt
-python3 scripts/download_models.py        # or: sbatch slurm/download_models.sbatch
+sbatch slurm/download_models.sbatch       # or directly: python3 scripts/download_models.py
 ```
 
 ## Run
@@ -34,8 +34,8 @@ sbatch slurm/run_baseline_psi.job
 # or directly: python scripts/run_baseline_experiment.py --config configs/experiment_4gpu.yaml --arms psi
 
 # MAPPO training
-python scripts/train_mappo.py --config configs/mappo_4gpu.yaml --output-dir data/results/mappo/main
-# cluster: sbatch slurm/train_mappo.job   (ablations: configs/mappo_4gpu_beta3.yaml, _unsafetyonly)
+sbatch slurm/train_mappo.job          # ablations: set CONFIG=configs/mappo_4gpu_beta3.yaml (or _unsafetyonly)
+# or directly: python scripts/train_mappo.py --config configs/mappo_4gpu.yaml --output-dir data/results/mappo/main
 
 # attack arms (baseline only)
 sbatch slurm/run_baseline_persuade_just.job         # monitor-persuasion (justification-only)
