@@ -26,16 +26,25 @@ python3 scripts/download_models.py        # or: sbatch slurm/download_models.sba
 ## Run
 
 ```bash
-# baseline arms
-bash slurm/submit_all_arms.sh                      # psi, persuade_just, persuade_cot
-sbatch slurm/run_baseline_compromised_monitor.job  # insider-threat arm
+# smoke test first — quick end-to-end check of the setup
+sbatch slurm/smoke_test.job
+
+# baseline (clean psi arm, no attack)
+sbatch slurm/run_baseline_psi.job
+# or directly: python scripts/run_baseline_experiment.py --config configs/experiment_4gpu.yaml --arms psi
 
 # MAPPO training
 python scripts/train_mappo.py --config configs/mappo_4gpu.yaml --output-dir data/results/mappo/main
 # cluster: sbatch slurm/train_mappo.job   (ablations: configs/mappo_4gpu_beta3.yaml, _unsafetyonly)
+
+# attack arms
+sbatch slurm/run_baseline_persuade_just.job         # monitor-persuasion (justification-only)
+sbatch slurm/run_baseline_persuade_cot.job          # monitor-persuasion (chain-of-thought)
+sbatch slurm/run_baseline_compromised_monitor.job   # insider-threat (compromised monitor)
+# psi + both persuasion arms in one sweep: bash slurm/submit_all_arms.sh
 ```
 
-Both runners take `--config` / `--output-dir`; see the `slurm/*.job` files for exact flags.
+Both runners take `--config` / `--output-dir` / `--arms`; see the `slurm/*.job` files for exact flags.
 
 ## Reproduce
 
@@ -47,6 +56,7 @@ python3 scripts/consensus_penalty.py \
 
 # MAPPO (tag mappo-v1; eval logs already committed)
 python3 scripts/analyze_mappo_diagnostic.py --run-dir data/results/mappo/main
+# regenerate the eval logs from checkpoints: sbatch slurm/reeval_checkpoints.job
 ```
 
 MAPPO numbers use checkpoint **u24** (training stopped early — see the note in
