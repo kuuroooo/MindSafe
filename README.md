@@ -1,8 +1,10 @@
 # MindSafe
 
-Thesis code: a multi-agent framework for safer mental-health chat. Three agents —
-coordinator, therapist, monitor — respond to a simulated patient; an external judge
-scores each turn. Two stages:
+Thesis code: a multi-agent framework for safer mental-health chat. 
+Three agents (coordinator, therapist, monitor) respond to a simulated patient; 
+an external judge scores each turn. 
+
+Two stages:
 
 - **Baseline** measures the *unsafe-consensus* failure mode — the agents agree, the
   judge rates the turn unsafe, but it's still released as safe — including under
