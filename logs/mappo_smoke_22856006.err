@@ -1,35 +1,0 @@
-/home/kwang/mindsafe_env/lib/python3.11/site-packages/transformers/utils/hub.py:110: FutureWarning: Using `TRANSFORMERS_CACHE` is deprecated and will be removed in v5 of Transformers. Use `HF_HOME` instead.
-  warnings.warn(
-Loading checkpoint shards:   0%|          | 0/4 [00:00<?, ?it/s]Loading checkpoint shards:  25%|██▌       | 1/4 [00:06<00:20,  6.74s/it]Loading checkpoint shards:  50%|█████     | 2/4 [00:13<00:13,  6.61s/it]Loading checkpoint shards:  75%|███████▌  | 3/4 [00:19<00:06,  6.47s/it]Loading checkpoint shards: 100%|██████████| 4/4 [00:21<00:00,  4.54s/it]Loading checkpoint shards: 100%|██████████| 4/4 [00:21<00:00,  5.29s/it]
-Traceback (most recent call last):
-  File "/gpfs/home4/kwang/mindsafe/scripts/train_mappo.py", line 281, in <module>
-    main()
-  File "/gpfs/home4/kwang/mindsafe/scripts/train_mappo.py", line 277, in main
-    asyncio.run(main_async(config, out_dir, args))
-  File "/sw/arch/RHEL8/EB_production/2023/software/Python/3.11.3-GCCcore-12.3.0/lib/python3.11/asyncio/runners.py", line 190, in run
-    return runner.run(main)
-           ^^^^^^^^^^^^^^^^
-  File "/sw/arch/RHEL8/EB_production/2023/software/Python/3.11.3-GCCcore-12.3.0/lib/python3.11/asyncio/runners.py", line 118, in run
-    return self._loop.run_until_complete(task)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/sw/arch/RHEL8/EB_production/2023/software/Python/3.11.3-GCCcore-12.3.0/lib/python3.11/asyncio/base_events.py", line 653, in run_until_complete
-    return future.result()
-           ^^^^^^^^^^^^^^^
-  File "/gpfs/home4/kwang/mindsafe/scripts/train_mappo.py", line 117, in main_async
-    resumed_idx = trainer.load_checkpoint(Path(args.resume_from))
-                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/gpfs/home4/kwang/mindsafe/src/mappo/trainer.py", line 246, in load_checkpoint
-    self.policy.load(dir_path / "policy")
-  File "/gpfs/home4/kwang/mindsafe/src/mappo/policy.py", line 361, in load
-    self.base_model.load_adapter(str(Path(dir_path) / name), adapter_name=name)
-  File "/home/kwang/mindsafe_env/lib/python3.11/site-packages/peft/peft_model.py", line 1402, in load_adapter
-    adapters_weights = load_peft_weights(
-                       ^^^^^^^^^^^^^^^^^^
-  File "/home/kwang/mindsafe_env/lib/python3.11/site-packages/peft/utils/save_and_load.py", line 936, in load_peft_weights
-    has_remote_safetensors_file = file_exists(
-                                  ^^^^^^^^^^^^
-  File "/home/kwang/mindsafe_env/lib/python3.11/site-packages/huggingface_hub/utils/_validators.py", line 106, in _inner_fn
-    validate_repo_id(arg_value)
-  File "/home/kwang/mindsafe_env/lib/python3.11/site-packages/huggingface_hub/utils/_validators.py", line 154, in validate_repo_id
-    raise HFValidationError(
-huggingface_hub.errors.HFValidationError: Repo id must be in the form 'repo_name' or 'namespace/repo_name': 'data/results/mappo/smoke_22853121/ckpt_00000/policy/coordinator'. Use `repo_type` argument if needed.
