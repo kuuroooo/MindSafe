@@ -6,12 +6,12 @@ an external judge scores each turn.
 
 Two stages:
 
-- **Baseline** measures the *unsafe-consensus* failure mode — the agents agree, the
-  judge rates the turn unsafe, but it's still released as safe — including under
+- **Baseline** measures the *unsafe-consensus* failure mode (the agents agree, the
+  judge rates the turn unsafe, but it's still released as safe), including under
   monitor-persuasion and insider-threat attacks.
 - **MAPPO** trains the agents' LoRA policies with a shared safety reward to reduce it.
 
-Runs on Snellius (4× A100: policy on GPU 0, vLLM judge on GPUs 1–3).
+Runs on Snellius (4x A100: policy on GPU 0, vLLM judge on GPUs 1-3).
 
 Tags: `baseline-v1` = baseline results only; `mappo-v1` = full thesis (baseline + MAPPO).
 `main` == `mappo-v1`.
@@ -26,7 +26,7 @@ sbatch slurm/download_models.sbatch       # or directly: python3 scripts/downloa
 ## Run
 
 ```bash
-# smoke test first — quick end-to-end check of the setup
+# smoke test first (quick end-to-end check of the setup)
 sbatch slurm/smoke_test.job
 
 # baseline (clean psi arm, no attack)
@@ -59,7 +59,7 @@ python3 scripts/analyze_mappo_diagnostic.py --run-dir data/results/mappo/main
 # regenerate the eval logs from checkpoints: sbatch slurm/reeval_checkpoints.job
 ```
 
-MAPPO numbers use checkpoint **u24** (training stopped early — see the note in
+MAPPO numbers use checkpoint u24 (training stopped early; see the note in
 `configs/mappo_4gpu.yaml`). Baseline details: `data/results/baseline/MANIFEST.md`.
 
 ## Layout
