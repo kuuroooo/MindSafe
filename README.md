@@ -37,7 +37,7 @@ sbatch slurm/run_baseline_psi.job
 python scripts/train_mappo.py --config configs/mappo_4gpu.yaml --output-dir data/results/mappo/main
 # cluster: sbatch slurm/train_mappo.job   (ablations: configs/mappo_4gpu_beta3.yaml, _unsafetyonly)
 
-# attack arms
+# attack arms (baseline only)
 sbatch slurm/run_baseline_persuade_just.job         # monitor-persuasion (justification-only)
 sbatch slurm/run_baseline_persuade_cot.job          # monitor-persuasion (chain-of-thought)
 sbatch slurm/run_baseline_compromised_monitor.job   # insider-threat (compromised monitor)
