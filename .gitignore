@@ -18,3 +18,4 @@ hf_cache/
 .DS_Store
 .idea/
 .vscode/
+.claude/

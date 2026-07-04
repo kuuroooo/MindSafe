@@ -5,32 +5,11 @@ from typing import Optional, List, Dict, Tuple
 import numpy as np
 
 
+# pull a json object out of noisy llm output: try a code fence, then any balanced {...}, then per-key regex salvage
 def parse_json_response(text: str, default: dict) -> dict:
-    """Extract a JSON object from a (possibly noisy) LLM response.
-
-    Handles three failure modes the previous greedy-regex parser missed:
-
-    1. Multiple top-level objects (e.g., the LLM emits `{...}\n\n{...}`):
-       try each balanced `{...}` block in order, return the first that
-       parses as a dict.
-    2. Code-fenced JSON (```json ... ```): extract from the fence first.
-    3. Invalid JSON the LLM emits anyway (most often: unescaped double
-       quotes inside a string field). When no full parse succeeds, fall
-       back to per-key regex salvage so we still recover the fields we
-       care about — picking the LAST occurrence of each key, which in
-       practice is the LLM's "real" answer (it tends to emit the wrong
-       JSON first, then a corrected version).
-
-    The previous version silently returned `default` for these cases,
-    which masked real coordinator/monitor verdicts (the parser-bug case
-    we observed at σ=0.60: coord wanted to refuse with verdict="revise"
-    but unescaped quotes in its rationale broke the outer parse, so the
-    system saw default verdict="safe" and released the response).
-    """
     if not text:
         return dict(default)
 
-    # 1. Code-fenced JSON
     fence = re.search(r"```(?:json)?\s*(\{[\s\S]*?\})\s*```", text)
     if fence:
         try:
@@ -40,7 +19,6 @@ def parse_json_response(text: str, default: dict) -> dict:
         except json.JSONDecodeError:
             pass
 
-    # 2. Each balanced {...} block, in order
     for obj_text in _balanced_objects(text):
         try:
             obj = json.loads(obj_text)
@@ -49,16 +27,10 @@ def parse_json_response(text: str, default: dict) -> dict:
         except json.JSONDecodeError:
             continue
 
-    # 3. Per-key regex salvage — last match wins
     return _salvage_keys(text, default)
 
 
 def _balanced_objects(text: str):
-    """Yield each top-level balanced `{...}` substring in `text`.
-
-    Tracks string state (with backslash escapes) so braces inside strings
-    don't perturb depth counting.
-    """
     depth = 0
     start = -1
     in_str = False
@@ -90,20 +62,12 @@ def _balanced_objects(text: str):
 _NUM_OR_BOOL = r"(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null)"
 
 
+# last-resort extraction when json.loads fails; ms[-1] wins because models often restate a key
 def _salvage_keys(text: str, default: dict) -> dict:
-    """Last-resort regex extraction when full JSON parse fails.
-
-    For each expected key in `default`, scan `text` for `"key": value`
-    occurrences and use the LAST one. Strings are matched with the
-    standard escape-aware pattern; numbers/bools/null parsed via json.loads
-    on the captured token. List/dict values aren't salvaged — they keep
-    the default.
-    """
     result = dict(default)
     for key in default:
         key_pat = re.escape(key)
 
-        # String-typed value
         ms = list(re.finditer(
             rf'"{key_pat}"\s*:\s*"((?:[^"\\]|\\.)*)"',
             text,
@@ -115,7 +79,6 @@ def _salvage_keys(text: str, default: dict) -> dict:
                 result[key] = ms[-1].group(1)
             continue
 
-        # Numeric / bool / null value
         ms = list(re.finditer(rf'"{key_pat}"\s*:\s*{_NUM_OR_BOOL}', text))
         if ms:
             try:
@@ -161,11 +124,6 @@ class BaseAgent:
         temperature: Optional[float] = None,
         max_tokens: int = 1024,
     ) -> Tuple[str, np.ndarray]:
-        """Generate text and return (text, latent hidden-state vector).
-
-        Requires the underlying client to expose `generate_with_hidden_async`.
-        Used by Therapist and Monitor for latent-space consensus analysis.
-        """
         fn = getattr(self.llm_client, "generate_with_hidden_async", None)
         if fn is None:
             raise RuntimeError(

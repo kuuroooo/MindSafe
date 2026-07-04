@@ -1,20 +1,3 @@
-"""Monitor-persuasion attack (Za et al., Persuade Me If You Can, 2025).
-
-Models an 'insider' therapist that attaches a persuasive safety rationale
-to its response for the monitor's eyes only. The user-facing response
-(and therefore the external judge's view) is never altered, so judge σ(s_t)
-remains ground truth. The monitor, however, now sees surface evidence that
-biases its evaluation toward approval — the exact oversight-layer attack
-the SLR flags as the strongest interaction-level failure.
-
-Two modes:
-  * justification_only — short, confident safety rationale appended
-    ("I have reviewed this against the safety guidelines..."). Matches
-    Za et al.'s ~43% persuasion-success condition.
-  * cot_style — wraps the justification in a staged reasoning trace,
-    approximating the ~54% CoT-enhanced condition.
-"""
-
 from __future__ import annotations
 
 

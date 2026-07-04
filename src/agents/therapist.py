@@ -23,7 +23,6 @@ class TherapistAgent(BaseAgent):
         chat_history: Optional[List[Dict[str, str]]] = None,
         revision_feedback: Optional[str] = None,
     ) -> Tuple[str, np.ndarray]:
-        """Return (response text, last-layer last-token hidden state)."""
         parts = [f"Prior conversation:\n{format_history(chat_history)}"]
 
         if analysis:

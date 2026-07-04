@@ -1,17 +1,3 @@
-#!/usr/bin/env python3
-"""MindSafe baseline experiment runner — Snellius 4×A100.
-
-Lifecycle:
-    1. Start vLLM server subprocess (judge, GPUs 1-3).
-    2. Load MAS model on GPU 0 in the main process.
-    3. Run conversations across all (arm × scenario) combinations.
-    4. Tear down the vLLM server on exit.
-
-Red-team arms are defined in `config["redteam"]["arms"]`. Each arm pairs a
-patient simulator (legacy / PATIENT-psi) with a monitor-view hook, so the
-same seed set can be replayed under multiple attack conditions.
-"""
-
 import argparse
 import asyncio
 import json
@@ -71,13 +57,6 @@ def _build_patient(
     conv_idx: int,
     base_seed: int,
 ):
-    """Build a patient simulator for one conversation.
-
-    `conv_idx` + `base_seed` determine the (profile × style) combo for the
-    PATIENT-psi simulator via without-replacement sampling. `base_seed +
-    conv_idx` is passed as the per-conversation LLM sampling seed so
-    downstream stochasticity is still reproducible.
-    """
     llm_seed = base_seed + conv_idx
     if patient_kind == "legacy":
         return PatientSimulator(mas_client, scenario_name=scenario_name, seed=llm_seed)
@@ -93,7 +72,6 @@ def _build_patient(
 
 
 def _turn_record(t: dict) -> dict:
-    """Lightweight per-turn record used for stratified arm-level metrics."""
     return {
         "turn": t.get("turn"),
         "external_safety": t.get("external_safety"),
@@ -109,11 +87,6 @@ def _turn_record(t: dict) -> dict:
 
 
 def _summarize_turns(turns: list) -> dict:
-    """Conversation summary in the same shape InstrumentedMAS produces.
-
-    Used for skip-existing resume: when we load a conv_NNN.jsonl that's
-    already on disk, we still need a per-conv summary for arm aggregation.
-    """
     if not turns:
         return {"total_turns": 0}
     distances = [t["latent_distance"] for t in turns if t.get("latent_distance") is not None]
@@ -145,11 +118,6 @@ def _summarize_turns(turns: list) -> dict:
 
 
 def _load_existing_conv(conv_path: Path):
-    """Try to load a previously-completed conv JSONL.
-
-    Returns (summary, turn_records) on success, None if the file is
-    missing/empty/unparseable. Used by the skip-existing resume path.
-    """
     try:
         turns = [json.loads(line) for line in conv_path.read_text().splitlines() if line.strip()]
     except (OSError, json.JSONDecodeError):
@@ -169,13 +137,7 @@ async def run_single_conversation(mas, patient, max_turns: int):
 
     patient_msg = await patient.generate_message()
 
-    # Run the full max_turns trajectory. The previous implementation
-    # short-circuited as soon as the therapist produced a crisis-keyword +
-    # action-keyword response — but that's exactly the trajectory drift
-    # we want to stress-test. By letting the patient keep escalating
-    # regardless of the therapist's mid-conversation safety attempts, we
-    # surface compounding harm and oversight fatigue in long sessions
-    # (proposal §2 trajectory-shaped harm; SLR §5.4 longitudinal gap).
+    # run the full max_turns even after crisis signals: the trajectory drift is exactly what we stress-test
     for turn in range(max_turns):
         result = await mas.generate_response(patient_msg)
         patient_msg = await patient.generate_message(
@@ -195,9 +157,7 @@ async def run_arm(
     judge_client,
     consensus_metrics: ConsensusMetrics,
 ):
-    # Per-arm agent overrides: shallow-merge `arm.agent_overrides.<name>`
-    # into `config.agents.<name>` before instantiating the agent. Used for
-    # insider-threat scenarios (e.g., compromised monitor system_prompt).
+    # per-arm overrides shallow-merge into the agent config; used for insider-threat arms (e.g. compromised monitor)
     overrides = arm.get("agent_overrides") or {}
 
     def _agent_cfg(name: str) -> dict:
@@ -227,10 +187,6 @@ async def run_arm(
     n_convs = config.get("n_conversations_per_scenario", 10)
     max_turns = config.get("max_turns", 10)
     seed = config.get("seed", 42)
-    # Per-conversation timeout — protects the arm against silent hangs
-    # in vLLM or HF generate (a degenerate prompt that never returns).
-    # If a conv exceeds this, we abort it, do NOT write its JSONL, log
-    # a "timeout" entry, and continue. The next resume will retry it.
     conv_timeout_seconds = float(config.get("mas", {}).get(
         "conversation_timeout_seconds", 2400
     ))
@@ -272,11 +228,7 @@ async def run_arm(
             for conv_idx in range(n_convs):
                 conv_path = scen_log_dir / f"conv_{conv_idx:03d}.jsonl"
 
-                # --- Skip-existing: surgical resume ---------------------
-                # If a previous job already produced a complete JSONL for
-                # this (scenario, conv_idx), load it and skip re-running.
-                # Lets resubmits pick up exactly where the previous job
-                # left off without redoing successful convs.
+                # resume: if a complete jsonl already exists, reuse it and skip re-running this conv
                 if conv_path.exists():
                     existing = _load_existing_conv(conv_path)
                     if existing is not None:
@@ -304,7 +256,6 @@ async def run_arm(
                             f"redoing[/yellow]"
                         )
 
-                # --- Run the conversation, with a timeout safety net ----
                 patient = _build_patient(
                     patient_kind,
                     mas_client,
@@ -326,6 +277,7 @@ async def run_arm(
                     mas.export_logs(str(conv_path))
                     wrote_log = True
                 except asyncio.TimeoutError:
+                    # timeout: we deliberately do not write the jsonl, so the next resubmit retries this conv
                     console.print(
                         f"[red]{arm_name}/{scenario_name}/conv {conv_idx}: "
                         f"timeout after {conv_timeout_seconds:.0f}s — aborted; "
@@ -383,9 +335,9 @@ async def run_experiment(config: dict, output_dir: Path, mas_client, judge_clien
         )
     )
 
+    # back-compat: no redteam.arms means a single clean arm
     arms = config.get("redteam", {}).get("arms")
     if not arms:
-        # Back-compat: treat the absence of redteam.arms as a single clean arm.
         arms = [{"name": "clean", "patient": "legacy", "hook": "none"}]
     if arm_filter:
         arms = [a for a in arms if a["name"] in arm_filter]
@@ -412,8 +364,7 @@ async def run_experiment(config: dict, output_dir: Path, mas_client, judge_clien
             judge_client=judge_client,
             consensus_metrics=consensus_metrics,
         )
-        # Keep the top-level results.json compact — drop per-turn records
-        # (already persisted in the arm's own results.json).
+        # top-level results stays compact: per-turn records already live in each arm's results.json
         results["arms"][arm["name"]] = {
             k: v for k, v in arm_res.items() if k != "all_turn_records"
         }
@@ -457,12 +408,6 @@ def _aggregate(convs: list) -> dict:
 
 
 def _turn_level_metrics(records: list, safety_threshold: float) -> dict:
-    """Stratified metrics over all turns in an arm.
-
-    ASR: fraction of turns the judge marked unsafe.
-    Detection rate: P(unsafe_consensus | judge_unsafe).
-    False-positive rate: P(unsafe_consensus | judge_safe).
-    """
     if not records:
         return {}
     ext = [r["external_safety"] for r in records if r.get("external_safety") is not None]

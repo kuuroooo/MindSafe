@@ -1,36 +1,3 @@
-#!/usr/bin/env python3
-"""Re-run eval on existing MAPPO checkpoints with per-turn record dump.
-
-Use case:
-  The original training-time evals (eval_00004.json, eval_00009.json, …) only
-  saved an aggregate summary. For Meng's diagnostics (bootstrap CIs, c_consensus
-  split into similarity vs. unsafety terms, per-scenario stats with CIs) we need
-  per-turn records.
-
-  This script reloads each saved checkpoint, re-runs the eval harness with the
-  SAME seed (so the summary should reproduce), and writes a JSONL of per-turn
-  records next to each checkpoint's existing eval_<idx>.json.
-
-What it does NOT do:
-  - Re-run training updates
-  - Re-train the value head
-  - Touch the existing eval_<idx>.json summaries (those stay as the "official"
-    training-time numbers)
-
-What it DOES write:
-  - eval_<ckpt_idx>_turns.jsonl  (one JSON object per turn, alongside the
-    existing summary)
-  - reeval_<ckpt_idx>.json       (the fresh summary, for cross-check against
-    the original training-time summary — should match to within
-    nondeterminism noise)
-
-Submit (after vLLM judge GPUs are configured the same as training):
-  python scripts/reeval_checkpoints.py \
-      --config configs/mappo_4gpu.yaml \
-      --run-dir data/results/mappo/main \
-      --checkpoints ckpt_00004 ckpt_00009 ckpt_00014 ckpt_00019 ckpt_00024
-"""
-
 from __future__ import annotations
 
 import argparse
@@ -53,7 +20,6 @@ from src.models import (
 
 
 def _ckpt_idx(ckpt_name: str) -> int:
-    """ckpt_00004 -> 4. Returns -1 for the special 'baseline' name."""
     if ckpt_name == "baseline":
         return -1
     return int(ckpt_name.split("_")[-1])
@@ -99,6 +65,7 @@ async def main_async(
         tau = config["mappo"]["reward"]["tau"]
 
         for ckpt_name in ckpt_names:
+            # 'baseline' = untrained policy (lora adapters at init, B=0 so identity); the phase-1 reference point
             is_baseline = (ckpt_name == "baseline")
             ckpt_dir = run_dir / ckpt_name
             if not is_baseline and not (ckpt_dir / "policy").exists():
@@ -106,18 +73,10 @@ async def main_async(
                 continue
 
             idx = _ckpt_idx(ckpt_name)
+            # tag the filename by mode/regen/n_eps/seed so non-standard re-evals never clobber the standard ones
             mode_tag = "" if greedy else "_stoch"
-            # Transcript dumps are typically narrow-scope re-evals (subset of
-            # scenarios, fewer eps) intended to produce a transcripts.txt for
-            # reading by hand. Give them their own suffix so they never collide
-            # with the full eval JSONLs we already have.
             transcript_tag = "_transcripts" if dump_transcripts else ""
-            # max_regenerations != 3 → tag the filenames so e.g. the
-            # first-attempt (mr=1) eval doesn't clobber the post-revision (mr=3)
-            # eval. mr=1 is the training-aligned eval (no revision loop).
             regen_tag = f"_mr{max_regenerations}" if max_regenerations != 3 else ""
-            # Larger n_eps also gets its own tag so it doesn't clobber the
-            # n_eps=5 standard runs.
             n_eps_default = config["mappo"]["eval_n_eps_per_scenario"]
             n_eps_tag = (
                 f"_neps{n_eps_override}"
@@ -126,15 +85,11 @@ async def main_async(
             )
             extra_tag = f"{mode_tag}{transcript_tag}{regen_tag}{n_eps_tag}{out_suffix}"
             if is_baseline:
-                # Untrained policy = LoRA adapters at init (B=0 → identity).
-                # Used as the Phase-1 reference for "baseline vs MAPPO" plots.
                 seed_tag = base_seed_override if base_seed_override is not None else 10_000
                 turns_path = run_dir / f"baseline_turns_seed{seed_tag}{extra_tag}.jsonl"
                 summary_path = run_dir / f"baseline_seed{seed_tag}{extra_tag}.json"
             else:
-                # Tag filenames with the eval seed used so multiple seeds can
-                # coexist (item 2 "second seed" robustness check). Stochastic
-                # passes get _stoch suffix so they don't clobber greedy ones.
+                # default seed matches train_mappo's eval (10_000 + update_idx) so the numbers are comparable
                 default_seed = 10_000 + idx
                 seed = base_seed_override if base_seed_override is not None else default_seed
                 if (seed == default_seed and greedy and not dump_transcripts
@@ -159,8 +114,6 @@ async def main_async(
             else:
                 print(f"[reeval] {ckpt_name} → loading policy adapters")
                 policy.load(ckpt_dir / "policy")
-                # Default: SAME base_seed the training-time eval used so the summary
-                # is comparable. train_mappo.py uses base_seed=10_000 + update_idx.
                 base_seed = (
                     base_seed_override
                     if base_seed_override is not None
@@ -169,7 +122,6 @@ async def main_async(
 
             transcripts_path = None
             if dump_transcripts:
-                # Sibling .txt file next to the per-turn JSONL; same basename.
                 transcripts_path = turns_path.with_suffix("").with_suffix(".transcripts.txt")
                 if transcripts_path.exists():
                     print(f"[reeval] (transcripts {transcripts_path.name} exists, overwriting)")

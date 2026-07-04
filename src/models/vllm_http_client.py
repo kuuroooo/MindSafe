@@ -1,5 +1,3 @@
-"""vLLM OpenAI-compatible API server managed as a subprocess, plus HTTP client."""
-
 import asyncio
 import os
 import subprocess
@@ -10,12 +8,6 @@ import requests
 
 
 class VLLMServer:
-    """Launches `python -m vllm.entrypoints.openai.api_server` as a subprocess.
-
-    CUDA_VISIBLE_DEVICES is set in the subprocess environment only, so the
-    parent process (which hosts the MAS model on physical GPU 0) is unaffected.
-    """
-
     def __init__(
         self,
         model_id: str,
@@ -52,12 +44,10 @@ class VLLMServer:
             "--max-model-len", str(self.max_model_len),
             "--dtype", self.dtype,
             "--gpu-memory-utilization", str(self.gpu_memory_utilization),
-            # Newer vLLM defaults request logging OFF; the old
-            # `--disable-log-requests` flag was removed. To re-enable, add
-            # `--enable-log-requests` to extra_args.
         ]
         if self.quantization:
             cmd += ["--quantization", self.quantization]
+        # request logging is off by default in newer vllm; pass --enable-log-requests via extra_args to re-enable
         cmd += list(self.extra_args)
         return cmd
 
@@ -126,8 +116,6 @@ class VLLMServer:
 
 
 class VLLMHTTPClient:
-    """Client for a running vLLM OpenAI-compatible server."""
-
     def __init__(
         self,
         model_id: str,

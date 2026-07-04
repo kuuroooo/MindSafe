@@ -1,19 +1,3 @@
-#!/usr/bin/env python3
-"""Re-judge an existing sweep with a sharpened judge prompt — no MAS rerun.
-
-The judge only depends on (user_message, response, chat_history), all of
-which are already in each per-turn JSONL. This script walks every
-<arm>/logs/<scenario>/conv_*.jsonl, replays them through a freshly-spun-up
-vLLM judge with a stricter system prompt, and writes:
-
-  - <arm>/logs/<scenario>/conv_NNN.v2.jsonl    (per-turn, augmented with
-                                                judge_v2 + external_safety_v2)
-  - <arm>/results_v2.json                      (all_turn_records for retune)
-
-Idempotent: if a conv's .v2.jsonl already exists with the expected number
-of turns, it is skipped. Resume after a job timeout by re-submitting.
-"""
-
 import argparse
 import asyncio
 import json
@@ -30,14 +14,7 @@ from src.models import (
 )
 
 
-# Note: the sharpened judge rubric now lives directly in
-# configs/experiment_4gpu.yaml (agents.external_judge.system_prompt). This
-# script reads it from the config — no separate constant — so future runs
-# and rejudge passes use the same calibration without drift.
-
-
 def _summarize_conv(turns: list) -> dict:
-    """Per-conv summary in the same shape the runner produces."""
     if not turns:
         return {"total_turns": 0}
     distances = [t["latent_distance"] for t in turns if t.get("latent_distance") is not None]
@@ -77,7 +54,6 @@ async def rejudge_conv(
     distance_threshold: float,
     safety_threshold: float,
 ) -> list:
-    """Re-judge every turn in a conversation, threading chat_history."""
     turns = _load_conv(src)
     history: list = []
     for t in turns:
@@ -90,9 +66,6 @@ async def rejudge_conv(
         )
         t["judge_v2"] = new_judge
         t["external_safety_v2"] = float(new_judge.get("safety_score", 1.0))
-        # Recompute the unsafe_consensus flag with the v2 sigma + the
-        # config's calibrated thresholds (mas.distance_threshold,
-        # mas.external_safety_threshold).
         dist = t.get("latent_distance")
         coord_label = (t.get("coordinator_final") or {}).get("final_label", "safe")
         t["unsafe_consensus_v2"] = bool(
@@ -107,9 +80,6 @@ async def rejudge_conv(
 
 
 async def main_async(args):
-    # The judge system_prompt comes straight from the config — the main
-    # config has the calibrated rubric baked in, so any new run uses it
-    # directly and rejudging an old sweep applies the same prompt.
     config = load_config(args.config)
 
     sweep = Path(args.sweep_dir)
@@ -128,6 +98,8 @@ async def main_async(args):
     server = start_judge_server(config["judge_model"])
     try:
         judge_client = judge_client_from_config(config["judge_model"])
+        # calibrated rubric lives in the config (agents.external_judge.system_prompt); reading it here means a
+        # rejudge applies the exact same prompt as a fresh run — no drift
         judge = ExternalJudgeAgent(
             config["agents"]["external_judge"], judge_client
         )
@@ -158,9 +130,9 @@ async def main_async(args):
                         conv_path.stem + ".v2.jsonl"
                     )
                     if out_path.exists():
-                        # Resume support: skip if v2 has the same turn count.
                         try:
                             existing = _load_conv(out_path)
+                            # resume: matching turn counts means this conv was already rejudged, reuse it
                             if len(existing) == len(_load_conv(conv_path)):
                                 print(f"  [skip] {conv_path.name} (v2 cached)")
                                 turns = existing
@@ -201,7 +173,6 @@ async def main_async(args):
                     "n_errors": 0,
                 }
 
-            # Per-arm v2 results (consumable by retune_thresholds.py)
             arm_results = {
                 "arm": arm_name,
                 "judge_prompt": "sharpened",
@@ -218,7 +189,6 @@ async def main_async(args):
 
 
 def _arm_record(t: dict, scenario: str) -> dict:
-    """Match the shape retune_thresholds.py expects, but with v2 sigma."""
     return {
         "scenario": scenario,
         "external_safety": t.get("external_safety_v2"),

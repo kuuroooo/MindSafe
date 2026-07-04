@@ -1,22 +1,3 @@
-"""MAPPO update loop — clipped PPO objective per agent, shared advantage.
-
-Implements proposal Eq. 5:
-
-    L_CLIP_i(θ_i) = E_t[ min( ρ_t · Â_t,  clip(ρ_t, 1−ε, 1+ε) · Â_t ) ]
-
-with ρ_t = exp(log π_θ_i(a_t^i | τ_t^i) − log π_θ_i_old(a_t^i | τ_t^i))
-and Â_t computed centrally over the joint reward.
-
-Per-turn there are FOUR action records (one per agent role):
-  - coord_analyze  → trains the coordinator adapter
-  - therapist      → trains the therapist adapter
-  - monitor        → trains the monitor adapter
-  - coord_route    → trains the coordinator adapter (same one again)
-
-So the coordinator adapter receives gradient from BOTH analyze and
-route prompts (Q2 default = yes).
-"""
-
 from __future__ import annotations
 
 import math
@@ -37,18 +18,17 @@ from .value_net import CentralizedValueNet
 class MAPPOConfig:
     clip_eps: float = 0.2
     n_epochs_per_update: int = 4
-    minibatch_size: int = 32        # turns per minibatch
+    minibatch_size: int = 32
     lr_policy: float = 1e-5
     lr_value: float = 1e-4
     grad_clip: float = 1.0
     entropy_coef: float = 0.01
     value_coef: float = 0.5
 
-    beta: float = 1.0     # mirror of reward.beta — informational
-    tau: float = 0.1      # mirror of reward.tau  — informational
+    beta: float = 1.0
+    tau: float = 0.1
 
 
-# Maps role → which agent's adapter to use for the log-prob recompute.
 _ROLE_TO_AGENT = {
     "coord_analyze": "coordinator",
     "therapist":     "therapist",
@@ -77,9 +57,6 @@ class MAPPOTrainer:
             lr=cfg.lr_value,
         )
 
-    # -----------------------------------------------------------------
-    # Public: one PPO update over the buffer
-    # -----------------------------------------------------------------
 
     def update(self, buffer: RolloutBuffer) -> Dict[str, float]:
         if buffer.advantages is None or buffer.returns is None:
@@ -90,24 +67,16 @@ class MAPPOTrainer:
         if n == 0:
             return {"n_steps": 0}
 
-        # ---- pre-update diagnostics (Meng items 5 + 6) ----
-        # Computed BEFORE advantage normalization so we report the raw
-        # quantities the critic actually optimized this update.
+        # diagnostics on raw (pre-normalization) advantages/returns — what the critic actually optimized
         raw_adv  = np.asarray(buffer.advantages, dtype=np.float64)
         raw_rets = np.asarray(buffer.returns,    dtype=np.float64)
         rollout_values = np.array([s.value for s in steps], dtype=np.float64)
-        # Critic health: explained variance of the value head.
-        #   1.0 = critic perfectly predicts returns
-        #   0.0 = critic no better than predicting the mean
-        #   <0  = critic worse than the mean baseline (broken)
+        # explained variance of the critic: 1=perfect, 0=predicts mean, <0=worse than mean (broken)
         ret_var = float(np.var(raw_rets))
         if ret_var > 1e-12:
             explained_var = 1.0 - float(np.var(raw_rets - rollout_values)) / ret_var
         else:
             explained_var = float("nan")
-        # Reward scale diagnostics — confirms/refutes "penalty too small
-        # relative to therapy reward noise". β·c_consensus is what enters
-        # the gradient via r_joint = α·r_therapy − β·c_consensus.
         r_therapy_arr = np.array([s.r_therapy   for s in steps], dtype=np.float64)
         c_cons_arr    = np.array([s.c_consensus for s in steps], dtype=np.float64)
         beta = self.cfg.beta
@@ -122,12 +91,11 @@ class MAPPOTrainer:
             "r_therapy_std":      float(np.std(r_therapy_arr)),
             "c_consensus_std":    float(np.std(c_cons_arr)),
             "beta_c_consensus_std": beta * float(np.std(c_cons_arr)),
-            "advantage_normalized": True,   # see line below
+            "advantage_normalized": True,
         }
 
-        # Normalize advantages — standard PPO trick, large variance
-        # reduction without changing the optimum.
         adv = torch.tensor(buffer.advantages, dtype=torch.float32)
+        # standard ppo advantage normalization: cuts gradient variance without moving the optimum
         adv = (adv - adv.mean()) / (adv.std() + 1e-8)
         rets = torch.tensor(buffer.returns, dtype=torch.float32)
 
@@ -158,13 +126,7 @@ class MAPPOTrainer:
                 batch_adv = adv[idxs]
                 batch_ret = rets[idxs]
 
-                # ---- per-agent policy losses (centralized advantage) ----
-                # Memory-aware: backprop after EACH per-step forward to free
-                # the activation graph. Gradients accumulate across all 4
-                # roles × all minibatch steps before optimizer.step().
                 self.policy_optim.zero_grad(set_to_none=True)
-                # Normalize so the accumulated gradient has the same magnitude
-                # as if we had averaged the loss across all units.
                 n_units = max(1, len(batch_steps)) * len(_ROLE_TO_AGENT)
                 for role, agent_name in _ROLE_TO_AGENT.items():
                     agent = getattr(self.policy, agent_name)
@@ -182,10 +144,9 @@ class MAPPOTrainer:
                 )
                 self.policy_optim.step()
 
-                # ---- value loss (separate optimizer, separate graph) ---
                 self.value_optim.zero_grad(set_to_none=True)
                 gst_batch = [s.global_state_text for s in batch_steps]
-                v_pred = self.value_net.batched(gst_batch)            # [B]
+                v_pred = self.value_net.batched(gst_batch)
                 value_loss = ((v_pred.float() - batch_ret.to(v_pred.device).float()) ** 2).mean()
                 (self.cfg.value_coef * value_loss).backward()
                 torch.nn.utils.clip_grad_norm_(
@@ -196,7 +157,6 @@ class MAPPOTrainer:
                 log["value_loss"] += float(value_loss.detach().cpu())
                 n_minibatch_steps += 1
 
-        # average across minibatches
         if n_minibatch_steps > 0:
             for k in list(log.keys()):
                 if k.startswith(("policy_loss/", "kl/", "value_loss")):
@@ -205,24 +165,8 @@ class MAPPOTrainer:
             log["clip_frac"] = clip_count / clip_total
         return log
 
-    # -----------------------------------------------------------------
-    # Internal: per-role policy loss for one minibatch
-    # -----------------------------------------------------------------
 
     def _policy_loss_for_role(self, agent, batch_steps, batch_adv, role, n_units):
-        """Per-step backward to keep peak activation memory bounded to ONE forward graph.
-
-        For each step in the minibatch:
-          - recompute log-probs under the current adapter (forward, with grad)
-          - compute the clipped surrogate
-          - backward immediately, accumulating into adapter parameter grads
-          - free the graph
-
-        Returns scalar floats only — no live grad tensors leak out.
-        Gradients are cleared by the caller via `policy_optim.zero_grad`
-        before this function is invoked, and the optimizer step happens
-        after all 4 roles have accumulated.
-        """
         cum_loss_value = 0.0
         kl_acc, n_tok_acc = 0.0, 0
         clipped, total = 0, 0
@@ -236,14 +180,14 @@ class MAPPOTrainer:
             response_ids = torch.from_numpy(act["response_ids"]).long()
             old_lp       = torch.from_numpy(act["old_log_probs"]).float().to(self.policy.device)
 
-            new_lp = agent.compute_log_probs(prompt_ids, response_ids)  # [n_resp], grad enabled
+            new_lp = agent.compute_log_probs(prompt_ids, response_ids)
             ratio = torch.exp(new_lp - old_lp.detach())
             A = A_scalar.detach().to(ratio.device).to(ratio.dtype)
             unclipped = ratio * A
             clipped_r = torch.clamp(ratio, 1.0 - self.cfg.clip_eps, 1.0 + self.cfg.clip_eps) * A
             surrogate = -torch.min(unclipped, clipped_r).mean()
 
-            # Normalize so accumulated grads ≈ averaged loss across all units
+            # backprop per step to bound peak activation memory; /n_units so accumulated grads == averaged loss
             (surrogate / n_units).backward()
             cum_loss_value += float(surrogate.detach().cpu())
             n_seen += 1
@@ -255,16 +199,12 @@ class MAPPOTrainer:
                 clip_mask = ((ratio < 1 - self.cfg.clip_eps) | (ratio > 1 + self.cfg.clip_eps))
                 clipped += int(clip_mask.sum().item())
                 total += int(clip_mask.numel())
-            # Drop the graph eagerly
             del new_lp, ratio, surrogate, unclipped, clipped_r
 
         avg_loss = cum_loss_value / max(1, n_seen)
         kl_mean = (kl_acc / n_tok_acc) if n_tok_acc > 0 else 0.0
         return avg_loss, kl_mean, clipped, total
 
-    # -----------------------------------------------------------------
-    # Checkpoint
-    # -----------------------------------------------------------------
 
     def save_checkpoint(self, dir_path: Path, update_idx: int = -1) -> None:
         dir_path = Path(dir_path); dir_path.mkdir(parents=True, exist_ok=True)
@@ -277,7 +217,6 @@ class MAPPOTrainer:
         }, dir_path / "optim.pt")
 
     def load_checkpoint(self, dir_path: Path) -> int:
-        """Returns the update_idx the checkpoint was saved at (-1 if absent)."""
         dir_path = Path(dir_path)
         self.policy.load(dir_path / "policy")
         self.value_net.load(dir_path / "value")

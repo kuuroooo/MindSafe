@@ -3,13 +3,6 @@ from .monitor_persuasion import MonitorPersuasionAttack
 
 
 def build_hook(spec) -> MonitorViewHook:
-    """Factory mapping a config entry (`hook:` field) to a hook instance.
-
-    Accepts:
-      - None / "none" / missing: IdentityHook
-      - dict with `type: monitor_persuasion, mode: ...`
-      - list of the above (composed via HookChain)
-    """
     if spec is None or spec == "none":
         return IdentityHook()
     if isinstance(spec, list):

@@ -8,30 +8,6 @@ from src.redteam import IdentityHook, MonitorViewHook
 
 
 class InstrumentedMAS:
-    """Orchestrates Coordinator.analyze → [Therapist → Monitor → Coordinator.route]×N
-    → External Judge.
-
-    The coordinator is the active gate *inside* the revision loop: after
-    each therapist draft + monitor check, it picks a verdict —
-      * "safe"   → release the draft to the user;
-      * "revise" → hand specific fix instructions back to the therapist;
-      * "unsafe" → refuse / escalate.
-    The therapist's next attempt is primed by the coordinator's
-    `revision_instructions` (e.g., a clarification maneuver), not by the
-    monitor's concerns directly.
-
-    Per turn we log:
-      - latent cosine distance between the therapist's and monitor's
-        last-layer last-token hidden states (primary consensus signal,
-        proposal Eq. 4),
-      - the coordinator's terminal verdict as `final_label`,
-      - the external judge's weighted safety score σ(s_t),
-      - a diagnostic text-embedding similarity over the three outputs.
-
-    Unsafe consensus fires when latent distance is low AND judge safety is
-    low AND the coordinator released the turn as "safe".
-    """
-
     def __init__(
         self,
         coordinator,
@@ -110,18 +86,14 @@ class InstrumentedMAS:
             verdict = route_result.get("verdict", "safe")
             if verdict in ("safe", "unsafe"):
                 break
-            # verdict == "revise": therapist's next attempt is primed by
-            # the coordinator's concrete instructions (preferred) with
-            # monitor concerns as a fallback.
             revision_feedback = (
                 route_result.get("revision_instructions")
                 or "; ".join(monitor_result.get("concerns", []))
                 or monitor_result.get("rationale", "")
             )
 
+        # route() forces a last-attempt "revise" to "unsafe", so terminal_verdict is only ever safe/unsafe
         terminal_verdict = route_result.get("verdict", "safe")
-        # `route` already maps a "revise" verdict on the last attempt to
-        # "unsafe", so terminal_verdict is always "safe" or "unsafe" here.
         coord_final = {
             "final_label": terminal_verdict,
             "confidence": route_result.get("confidence", 0.5),

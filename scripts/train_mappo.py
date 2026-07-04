@@ -1,21 +1,3 @@
-#!/usr/bin/env python3
-"""MAPPO training entrypoint for MindSafe.
-
-Loop:
-  1. Start frozen 70B AWQ judge (vLLM HTTP, GPUs 1-2).
-  2. Build MultiAgentPolicy (Llama-3-8B + 3 LoRA adapters, GPU 0).
-  3. Build CentralizedValueNet (small head on the same base).
-  4. Build MAPPOTrainer.
-  5. For total_episodes // n_episodes_per_update updates:
-       a. collect_rollouts → buffer
-       b. compute_advantages(buffer)
-       c. trainer.update(buffer)
-       d. log
-       e. periodic checkpoint
-       f. periodic baseline-style eval
-  6. Final checkpoint + eval, tear down judge.
-"""
-
 import argparse
 import asyncio
 import json
@@ -49,12 +31,6 @@ from src.simulation import PsiPatientSimulator
 
 
 def _patient_factory(base_model, tokenizer, device):
-    """Returns a function (scenario, conv_idx, base_seed) -> patient simulator.
-
-    The patient uses the shared base model with NO adapter active —
-    saves a whole GPU's worth of memory vs. running a separate frozen
-    LLaMA for the simulator.
-    """
     client = _FrozenBaseClient(base_model, tokenizer, device=device)
 
     def make(scenario: str, conv_idx: int, base_seed: int):
@@ -124,7 +100,6 @@ async def main_async(config: dict, out_dir: Path, args):
             policy.base_model, policy.tokenizer, config["mas_model"]["device"],
         )
 
-        # ---- main loop ----
         n_eps_per_scen_per_update = config["mappo"]["n_episodes_per_scenario_per_update"]
         eps_per_update = n_eps_per_scen_per_update * len(config["scenarios"])
         n_updates = config["mappo"]["total_episodes"] // eps_per_update
@@ -202,7 +177,6 @@ async def main_async(config: dict, out_dir: Path, args):
                         f"fpr={report.get('fpr', 0):.1%}"
                     )
 
-        # ---- final ----
         trainer.save_checkpoint(out_dir / "final", update_idx=n_updates - 1)
         print("[mappo] done.")
 
@@ -255,7 +229,6 @@ def main():
     if args.eval_every is not None:
         config["mappo"]["eval_every"] = args.eval_every
 
-    # Sanity-check the loop will actually run at least once
     eps_per_update = (
         config["mappo"]["n_episodes_per_scenario_per_update"]
         * len(config["scenarios"])

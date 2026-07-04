@@ -1,10 +1,3 @@
-#!/usr/bin/env python3
-"""Standalone launcher for the vLLM judge server — useful for debugging.
-
-Normally the runner starts this automatically. Use this only if you want to
-verify the server boots and responds independently.
-"""
-
 import argparse
 import signal
 import sys

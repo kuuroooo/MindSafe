@@ -1,28 +1,3 @@
-"""Trajectory collection for MAPPO.
-
-Replaces the frozen-agent path of `InstrumentedMAS` with the trainable
-LoRA-adapter agents in `MultiAgentPolicy`. Patient simulator and
-external judge are reused as-is from the baseline (they are NOT trained).
-
-Per-turn shape:
-  1. Coordinator analyzes the user message  → coord_analysis_text
-  2. Therapist responds                      → therapist_response (+ hidden)
-  3. (Optional) hook tampers with monitor's view of response
-  4. Monitor evaluates                       → monitor_text (+ hidden)
-  5. Coordinator routes                      → coord_route_text
-  6. External judge labels                   → σ + per-dimension scores
-  7. Compute c_consensus, r_therapy, r_joint
-  8. Centralized value V(s_t)
-  9. Patient generates next message
-
-Training-time choices (per Q1-Q5 design discussion):
-  - Revision loop is OFF — one therapist draft per turn.
-  - Coordinator trains on BOTH `analyze` and `route` prompts.
-  - Hidden states for c_consensus are recorded once (rollout time);
-    PPO updates the policy via log-prob gradients, not by backpropping
-    through the reward.
-"""
-
 from __future__ import annotations
 
 import json
@@ -37,29 +12,16 @@ from .reward import r_joint
 from .value_net import CentralizedValueNet, encode_global_state
 
 
-# -----------------------------------------------------------------------------
-# Per-turn record (one step of one trajectory)
-# -----------------------------------------------------------------------------
-
 @dataclass
 class TurnRecord:
     turn: int
     user_message: str
 
-    # Per-agent action records: prompt + response token ids + sample-time log-probs.
-    # We use a dict-of-lists keyed by agent role to keep agent_iter() simple.
     actions: Dict[str, Dict[str, Any]] = field(default_factory=dict)
-    # actions[role] = {
-    #   "prompt_ids":  np.ndarray,
-    #   "response_ids": np.ndarray,
-    #   "old_log_probs": np.ndarray,  # sample-time log P
-    #   "text":        str,
-    # }
 
     therapist_hidden: Optional[np.ndarray] = None
     monitor_hidden: Optional[np.ndarray] = None
 
-    # Reward + critic
     judge_result: Dict[str, Any] = field(default_factory=dict)
     sigma: float = 1.0
     r_therapy: float = 0.0
@@ -71,15 +33,10 @@ class TurnRecord:
     done: bool = False
 
 
-# -----------------------------------------------------------------------------
-# Rollout buffer (filled by collect_rollouts, consumed by trainer)
-# -----------------------------------------------------------------------------
-
 @dataclass
 class RolloutBuffer:
     trajectories: List[List[TurnRecord]] = field(default_factory=list)
 
-    # Filled in by compute_advantages
     advantages: Optional[np.ndarray] = None
     returns: Optional[np.ndarray] = None
 
@@ -90,7 +47,6 @@ class RolloutBuffer:
         return [step for traj in self.trajectories for step in traj]
 
     def per_arm_summary(self) -> Dict[str, float]:
-        """Aggregates for logging (mean reward components, etc.)."""
         steps = self.flatten_steps()
         if not steps:
             return {}
@@ -104,10 +60,6 @@ class RolloutBuffer:
             "mean_value": float(np.mean([s.value for s in steps])),
         }
 
-
-# -----------------------------------------------------------------------------
-# Per-agent prompt builders
-# -----------------------------------------------------------------------------
 
 def _coord_analyze_prompt(user_message: str, chat_history: List[Dict[str, str]]) -> str:
     from src.agents.base import format_history
@@ -184,29 +136,13 @@ def _coord_route_prompt(
     )
 
 
-# -----------------------------------------------------------------------------
-# Lightweight JSON parsers (avoid coupling to src.agents.base which we want
-# kept frozen — duplicate the small helper here)
-# -----------------------------------------------------------------------------
-
 def _parse_json_safe(text: str, default: dict) -> dict:
     from src.agents.base import parse_json_response
     return parse_json_response(text, default)
 
 
-# -----------------------------------------------------------------------------
-# Patient adapter — the patient simulator needs an LLM client. We give it a
-# tiny shim that calls the shared base model with NO adapter active.
-# -----------------------------------------------------------------------------
-
+# llm client for the patient simulator: shared base model with all adapters disabled (un-adapted)
 class _FrozenBaseClient:
-    """Shim that satisfies the patient simulator's `llm_client` interface.
-
-    Calls the shared base model under `disable_all_adapters_ctx` so the
-    patient's outputs are deterministic w.r.t. the base weights and not
-    influenced by whichever adapter is currently active.
-    """
-
     def __init__(self, base_model, tokenizer, device: str = "cuda:0"):
         self.base_model = base_model
         self.tokenizer = tokenizer
@@ -241,20 +177,16 @@ class _FrozenBaseClient:
         return self.tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
 
 
-# -----------------------------------------------------------------------------
-# Main entry: collect_rollouts
-# -----------------------------------------------------------------------------
-
 async def collect_rollouts(
     policy: MultiAgentPolicy,
     value_net: CentralizedValueNet,
-    patient_factory,                  # callable(scenario, conv_idx, base_seed) -> sim
+    patient_factory,
     scenarios: List[str],
     n_episodes_per_scenario: int,
     max_turns: int,
-    judge_client,                     # frozen 70B judge — not trained
-    consensus_metrics,                # not actually used here, kept for API parity
-    hook=None,                        # optional src.redteam.AdversaryHook
+    judge_client,
+    consensus_metrics,
+    hook=None,
     beta: float = 1.0,
     tau: float = 0.1,
     alpha_quality: float = 1.0,
@@ -262,10 +194,8 @@ async def collect_rollouts(
     base_seed: int = 0,
     monitor_chain_of_thought: bool = True,
 ) -> RolloutBuffer:
-    """Run rollouts and return a buffer ready for the MAPPO update."""
+    # build the judge here to reuse its per-dimension parsing
     from src.agents.external_judge import ExternalJudgeAgent
-    # Local judge agent so we get the dimension parsing for free.
-    # We construct it ad-hoc rather than depending on the caller to pass one.
     judge_cfg = {"system_prompt": getattr(judge_client, "system_prompt", "")}
     judge = ExternalJudgeAgent(judge_cfg, judge_client)
 
@@ -280,7 +210,6 @@ async def collect_rollouts(
             patient_msg = await patient.generate_message()
 
             for turn in range(max_turns):
-                # ---- 1. coordinator analyze ---------------------------------
                 ca_user_prompt = _coord_analyze_prompt(patient_msg, history)
                 ca = policy.coordinator.generate(
                     ca_user_prompt,
@@ -293,7 +222,6 @@ async def collect_rollouts(
                     "key_concerns": [], "recommended_focus": "",
                 })
 
-                # ---- 2. therapist respond ----------------------------------
                 th_prompt = _therapist_prompt(patient_msg, analysis, history)
                 th = policy.therapist.generate(
                     th_prompt, chat_history=None,
@@ -301,12 +229,10 @@ async def collect_rollouts(
                 )
                 response = th["text"]
 
-                # ---- 3. attack hook (optional) -----------------------------
                 monitor_view = response
                 if hook is not None and hasattr(hook, "transform_monitor_input"):
                     monitor_view = hook.transform_monitor_input(response, patient_msg, history)
 
-                # ---- 4. monitor evaluate -----------------------------------
                 mon_prompt = _monitor_prompt(
                     monitor_view, patient_msg, history,
                     chain_of_thought=monitor_chain_of_thought,
@@ -320,7 +246,6 @@ async def collect_rollouts(
                     "requires_revision": False, "rationale": mon["text"],
                 })
 
-                # ---- 5. coordinator route ----------------------------------
                 cr_prompt = _coord_route_prompt(
                     patient_msg, analysis, response, monitor_result, history,
                 )
@@ -329,7 +254,6 @@ async def collect_rollouts(
                     max_new_tokens=400, return_hidden=False,
                 )
 
-                # ---- 6. external judge -------------------------------------
                 judge_result = await judge.evaluate(
                     assistant_response=response,
                     user_message=patient_msg,
@@ -337,7 +261,6 @@ async def collect_rollouts(
                 )
                 sigma = float(judge_result.get("safety_score", 1.0))
 
-                # ---- 7. reward ---------------------------------------------
                 rw = r_joint(
                     therapist_hidden=th["hidden"],
                     monitor_hidden=mon["hidden"],
@@ -347,11 +270,9 @@ async def collect_rollouts(
                     penalty_form=penalty_form,
                 )
 
-                # ---- 8. centralized value ---------------------------------
                 gst = encode_global_state(history, patient_msg, analysis)
                 v = float(value_net(gst))
 
-                # ---- 9. record --------------------------------------------
                 rec = TurnRecord(
                     turn=turn,
                     user_message=patient_msg,
@@ -366,14 +287,12 @@ async def collect_rollouts(
                     value=v,
                     done=(turn == max_turns - 1),
                 )
-                # Action records — used by PPO update for ratio computation
                 rec.actions["coord_analyze"] = _action_record(ca)
                 rec.actions["therapist"] = _action_record(th)
                 rec.actions["monitor"] = _action_record(mon)
                 rec.actions["coord_route"] = _action_record(cr)
                 traj.append(rec)
 
-                # ---- patient next message ---------------------------------
                 history.append({"role": "user", "content": patient_msg})
                 history.append({"role": "assistant", "content": response})
                 patient_msg = await patient.generate_message(
@@ -387,7 +306,6 @@ async def collect_rollouts(
 
 
 def _action_record(gen_out: dict) -> Dict[str, Any]:
-    """Squeeze a generate() output into the buffer's action format."""
     return {
         "prompt_ids":   gen_out["prompt_ids"].numpy().astype(np.int64),
         "response_ids": gen_out["response_ids"].numpy().astype(np.int64),
@@ -396,24 +314,12 @@ def _action_record(gen_out: dict) -> Dict[str, Any]:
     }
 
 
-# -----------------------------------------------------------------------------
-# GAE (proposal Eq. 5 uses Â_t shared across agents — computed here once)
-# -----------------------------------------------------------------------------
-
+# gae once per turn; the scalar advantage is shared across all four agent roles (centralized critic, mappo)
 def compute_advantages(
     buffer: RolloutBuffer,
     gamma: float = 0.99,
     lam: float = 0.95,
 ) -> RolloutBuffer:
-    """In-place GAE on each trajectory; concatenates results into the buffer.
-
-    For each trajectory:
-        δ_t = r_t + γ V(s_{t+1}) (1 − done_t) − V(s_t)
-        A_t = δ_t + γ λ A_{t+1} (1 − done_t)
-        R_t = A_t + V(s_t)        (return target for value loss)
-
-    Centralized: same A_t shared across all agents at step t.
-    """
     all_advs: List[float] = []
     all_rets: List[float] = []
     for traj in buffer.trajectories:

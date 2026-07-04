@@ -1,5 +1,3 @@
-"""HuggingFace transformers client pinned to a single GPU."""
-
 import asyncio
 from typing import Optional, List, Dict, Tuple
 
@@ -63,7 +61,7 @@ class HFClient:
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
 
-        # Newer transformers prefers `dtype` (`torch_dtype` is deprecated).
+        # newer transformers wants dtype=; torch_dtype is deprecated
         kwargs = {
             "dtype": _DTYPES.get(self.config.torch_dtype, torch.bfloat16),
             "trust_remote_code": self.config.trust_remote_code,
@@ -149,18 +147,6 @@ class HFClient:
         max_tokens: Optional[int] = None,
         chat_history: Optional[List[Dict[str, str]]] = None,
     ) -> Tuple[str, np.ndarray]:
-        """Generate text, then take ONE extra forward pass for the hidden state.
-
-        Passing `output_hidden_states=True` to `.generate()` forces HF to
-        store per-step hidden states for every generated token across every
-        layer, which makes generation many times slower (and bloats memory).
-        We only need *one* vector — the last-layer representation at the
-        final token of the full (prompt + generated) sequence — so we run
-        a normal generate, then a single prompt+response forward pass with
-        `use_cache=False` to grab that vector. Net cost: one extra
-        forward at full sequence length (~few % on top of the dominant
-        autoregressive generation phase).
-        """
         max_tokens = max_tokens or self.config.max_new_tokens
         prompt = self._build_prompt(system_prompt, user_prompt, chat_history)
 
@@ -184,8 +170,7 @@ class HFClient:
         new_tokens = out_ids[0][prompt_len:]
         text = self.tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
 
-        # Single forward over the full (prompt + response) sequence to
-        # extract the last-layer last-token hidden state.
+        # second forward over full prompt+response to grab the last-layer last-token hidden state
         with torch.no_grad():
             out = self.model(
                 input_ids=out_ids,

@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-"""Pre-download models into HF_HOME before running experiments."""
-
 import os
 import sys
 

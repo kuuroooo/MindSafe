@@ -1,16 +1,3 @@
-"""PATIENT-psi cognitive-model profiles for structured patient simulation.
-
-Each profile specifies the patient's cognitive substrate (background, beliefs,
-coping strategies, situation, automatic thoughts, emotions, behaviors) plus a
-conversational style that controls how they reveal, resist, and drift.
-
-Per Wang et al. (EMNLP 2024) — the eight-field cognitive model — and
-parameterized by the same five scenario families the prose baseline uses.
-Sampling is without-replacement over (profile × style) combinations within
-a scenario, so each conversation index hits a distinct starting condition
-until the combo list is exhausted.
-"""
-
 from __future__ import annotations
 
 import random
@@ -18,13 +5,11 @@ from dataclasses import dataclass, asdict
 from typing import Dict, List, Optional, Tuple
 
 
-# CBT emotion categories (PATIENT-psi uses a fixed set of 9).
 EMOTIONS = [
     "anxiety", "sadness", "shame", "anger", "guilt",
     "hopelessness", "loneliness", "jealousy", "disgust",
 ]
 
-# Conversational style = difficulty dial. Each affects how the patient reveals.
 STYLES = ("plain", "upset", "verbose", "reserved", "tangent", "pleasing")
 
 STYLE_DESCRIPTIONS: Dict[str, str] = {
@@ -59,12 +44,6 @@ class CognitiveProfile:
     def to_dict(self) -> dict:
         return asdict(self)
 
-
-# --- Per-scenario pools ------------------------------------------------------
-# Eight profiles per scenario, covering different demographics, triggering
-# situations, and schema variants. Openers match the scenario's ambiguity
-# level and are used verbatim for turn 0 to ensure coverage of distinct
-# starting conditions across conversations.
 
 _AMBIGUOUS_CRISIS_POOL: List[Dict] = [
     {
@@ -603,9 +582,6 @@ _SCENARIO_POOLS: Dict[str, List[Dict]] = {
     "dependency_seeking": _DEPENDENCY_SEEKING_POOL,
 }
 
-# Style biases — some scenarios favor certain styles clinically. The full
-# combo set used for sampling is (pool × bias_styles). With 8 profiles and
-# 2-3 bias styles, each scenario yields 16-24 unique starting conditions.
 _SCENARIO_STYLE_BIAS: Dict[str, Tuple[str, ...]] = {
     "ambiguous_crisis": ("plain", "reserved"),
     "gradual_escalation": ("upset", "verbose", "plain"),
@@ -615,13 +591,9 @@ _SCENARIO_STYLE_BIAS: Dict[str, Tuple[str, ...]] = {
 }
 
 
+# deterministic shuffle: same (scenario, seed) always gives the same order, so conv_idx k maps to the
+# same profile+style across arms — per-arm deltas then reflect the attack, not patient sampling noise
 def _build_combos(scenario: str, seed: int) -> List[Tuple[int, str]]:
-    """Deterministic shuffled list of (profile_index, style) pairs.
-
-    The same `scenario` + `seed` always produces the same ordering, so
-    conv_idx k always maps to the same starting condition across arms —
-    ensuring per-arm deltas reflect the attack, not patient sampling noise.
-    """
     pool = _SCENARIO_POOLS[scenario]
     styles = _SCENARIO_STYLE_BIAS.get(scenario, STYLES)
     combos = [(i, s) for i in range(len(pool)) for s in styles]
@@ -633,20 +605,13 @@ def _build_combos(scenario: str, seed: int) -> List[Tuple[int, str]]:
 def sample_combo(
     scenario: str, conv_idx: int, base_seed: int
 ) -> CognitiveProfile:
-    """Pick the `conv_idx`-th profile×style combo for a scenario.
-
-    Wraps around if conv_idx ≥ len(combos) (falls back to re-seeded
-    replacement sampling for that overflow). In practice, n_conversations
-    should be ≤ len(combos) to keep every conversation unique.
-    """
     if scenario not in _SCENARIO_POOLS:
         raise ValueError(f"Unknown scenario: {scenario}")
     combos = _build_combos(scenario, base_seed)
     if conv_idx < len(combos):
         prof_idx, style = combos[conv_idx]
     else:
-        # Overflow: reshuffle with a new seed and pick, so repeats at least
-        # come from different style/profile mixes than the original pass.
+        # more convs than unique combos: reseed and sample so repeats differ from the first pass
         rng = random.Random(f"{scenario}:{base_seed}:{conv_idx}")
         prof_idx, style = rng.choice(combos)
     base = _SCENARIO_POOLS[scenario][prof_idx]
@@ -665,12 +630,8 @@ def sample_combo(
     )
 
 
+# legacy random sampler; prefer sample_combo for experiments (it guarantees coverage across conv_idx)
 def sample_profile(scenario: str, seed: Optional[int] = None) -> CognitiveProfile:
-    """Legacy random-sampling entrypoint. Retained for ad-hoc use.
-
-    For experiments, prefer `sample_combo(scenario, conv_idx, base_seed)`
-    which guarantees without-replacement coverage across conv_idx.
-    """
     if scenario not in _SCENARIO_POOLS:
         raise ValueError(f"Unknown scenario: {scenario}")
     rng = random.Random(seed)
@@ -693,7 +654,6 @@ def sample_profile(scenario: str, seed: Optional[int] = None) -> CognitiveProfil
 
 
 def combos_per_scenario() -> Dict[str, int]:
-    """How many unique (profile × style) combos each scenario offers."""
     return {
         s: len(_SCENARIO_POOLS[s])
         * len(_SCENARIO_STYLE_BIAS.get(s, STYLES))
@@ -702,13 +662,6 @@ def combos_per_scenario() -> Dict[str, int]:
 
 
 def compose_system_prompt(profile: CognitiveProfile) -> str:
-    """Turn a cognitive profile into a patient-simulator system prompt.
-
-    The prompt externalizes the cognitive substrate so the simulator LLM
-    stays consistent across turns: the patient's messages should surface
-    automatic thoughts, emotions, and behaviors that are *derived from*
-    their core/intermediate beliefs and situation.
-    """
     bullets = lambda xs: "\n".join(f"  - {x}" for x in xs)
     style_desc = STYLE_DESCRIPTIONS[profile.conversational_style]
     return (

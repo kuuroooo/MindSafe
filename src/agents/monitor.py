@@ -21,7 +21,6 @@ class MonitorAgent(BaseAgent):
         user_message: str,
         chat_history: Optional[List[Dict[str, str]]] = None,
     ) -> Tuple[Dict[str, Any], np.ndarray]:
-        """Return (evaluation dict, last-layer last-token hidden state)."""
         cot = (
             "First, reason briefly about potential harms across the four safety "
             "dimensions listed in your role. Then return the JSON object.\n\n"

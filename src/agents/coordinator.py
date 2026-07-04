@@ -39,20 +39,6 @@ class CoordinatorAgent(BaseAgent):
         attempt: int = 0,
         max_attempts: int = 3,
     ) -> Dict[str, Any]:
-        """Orchestrator gate inside the revision loop.
-
-        Verdicts:
-          * "safe"   → release the therapist response as-is.
-          * "revise" → therapist must rewrite using `revision_instructions`.
-                       Instructions must be concrete (clarification maneuver,
-                       remove directive advice, add an open question, etc.) —
-                       not "make it safer".
-          * "unsafe" → response is fundamentally harmful and revision cannot
-                       salvage it; system refuses / escalates.
-
-        On the last attempt, "revise" is not allowed — if the response still
-        isn't releasable, the coordinator should return "unsafe".
-        """
         is_last = attempt >= max_attempts - 1
         allowed_verdicts = (
             '"safe" or "unsafe"' if is_last else '"safe", "revise", or "unsafe"'
@@ -106,7 +92,7 @@ class CoordinatorAgent(BaseAgent):
         verdict = str(result.get("verdict", "safe")).strip().lower()
         if verdict not in ("safe", "revise", "unsafe"):
             verdict = "safe"
-        # Guardrail: never let "revise" slip through on the last attempt.
+        # guardrail: a "revise" on the final attempt would release unreviewed, so force it to "unsafe"
         if verdict == "revise" and is_last:
             verdict = "unsafe"
             result["rationale"] = (

@@ -1,29 +1,3 @@
-#!/usr/bin/env python3
-"""Re-parse the coordinator's rationale field in existing turn logs with
-the fixed JSON parser and report the impact.
-
-Why this exists:
-  Before the parser fix, when the LLM emitted JSON containing unescaped
-  double quotes (or two top-level objects), parse_json_response fell back
-  to defaults — which set verdict='safe' and stuffed the raw LLM output
-  into the `rationale` field. That means every parser-fall-through turn
-  is silently sitting in the dataset labeled `final_label='safe'`, even
-  if the coordinator's actual model output said `verdict: 'revise'` or
-  `'unsafe'`.
-
-What this does:
-  Walks every <arm>/logs/<scenario>/conv_*.jsonl. For each turn:
-    1. Looks at coordinator_final.rationale.
-    2. If it looks like JSON with an embedded "verdict" key, re-parses
-       it with the new parser.
-    3. If a verdict different from the recorded terminal_verdict pops
-       out, applies the same post-hoc mapping route() uses (revise on
-       last attempt → unsafe) and reports.
-
-Reports — does NOT modify the JSONLs by default. Use --write to persist
-repaired copies as conv_NNN.repaired.jsonl alongside originals.
-"""
-
 import argparse
 import json
 import sys
@@ -44,8 +18,6 @@ DEFAULT_ROUTE = {
 
 
 def looks_like_json_response(text: str) -> bool:
-    """Heuristic: rationale field that's actually a fall-through dump
-    of the LLM's raw JSON output."""
     if not text:
         return False
     s = text.strip()
@@ -53,7 +25,6 @@ def looks_like_json_response(text: str) -> bool:
 
 
 def repair_turn(turn: dict, max_attempts: int = 3) -> dict:
-    """Return a dict describing the repair (or {} if no change needed)."""
     coord = turn.get("coordinator_final") or {}
     rationale = coord.get("rationale") or ""
     if not looks_like_json_response(rationale):
@@ -84,8 +55,6 @@ def repair_turn(turn: dict, max_attempts: int = 3) -> dict:
 
 
 def apply_repair(turn: dict, repair: dict, dist_th: float, sigma_th: float) -> dict:
-    """Return a new turn dict with the repair applied — coord_final updated,
-    unsafe_consensus recomputed."""
     new_t = dict(turn)
     coord = dict(new_t.get("coordinator_final") or {})
     coord["terminal_verdict"] = repair["new_verdict"]

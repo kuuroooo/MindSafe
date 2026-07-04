@@ -1,18 +1,3 @@
-#!/usr/bin/env python3
-"""Pull the most informative flagged turns from a sweep for qualitative review.
-
-Walks each arm's per-conv JSONLs (which carry full text + per-agent rationales),
-recomputes unsafe_consensus under a chosen (distance_threshold, safety_threshold)
-pair, and prints the N most concerning flagged turns per arm in a readable
-format — user message, therapist response, monitor verdict + rationale,
-coordinator verdict + rationale, judge per-dimension scores + rationale.
-
-Usage:
-  python scripts/inspect_flagged.py data/results/baseline/sweep_20260425_165007
-  python scripts/inspect_flagged.py <sweep> --per-arm 10 --safety-threshold 0.85
-  python scripts/inspect_flagged.py <sweep> --arm psi+persuade_cot --scenario delusion_reinforcement
-"""
-
 import argparse
 import json
 from pathlib import Path
@@ -26,7 +11,6 @@ JUDGE_DIMS = (
 
 
 def walk_turns(arm_dir: Path) -> Iterator[Tuple[str, int, dict]]:
-    """Yield (scenario, conv_idx, turn_dict) for every turn in an arm."""
     logs = arm_dir / "logs"
     if not logs.exists():
         return
@@ -67,7 +51,6 @@ def _wrap(s, indent="  ", width=100):
         if len(para) <= width:
             out.append(indent + para)
             continue
-        # naive wrap on spaces
         cur = ""
         for word in para.split(" "):
             if len(cur) + len(word) + 1 > width:
@@ -131,7 +114,6 @@ def render_turn(arm: str, scen: str, conv_idx: int, t: dict) -> str:
     out.append(_wrap(coord.get("rationale", ""), indent="    "))
     out.append("")
 
-    # Show per-attempt coord verdicts so you can see if/when it flipped
     revs = t.get("revisions") or []
     if len(revs) > 1:
         out.append("REVISION TRAIL:")
@@ -202,8 +184,6 @@ def main():
             if sigma is None or dist is None:
                 continue
             if args.include_coord_unsafe:
-                # Broader: any turn the judge marked unsafe + latent agreement,
-                # regardless of coord verdict. Lets you see what coord caught vs missed.
                 if dist <= args.distance_threshold and sigma < args.safety_threshold:
                     flagged.append((scen, conv_idx, t))
             elif is_flagged(t, args.distance_threshold, args.safety_threshold):

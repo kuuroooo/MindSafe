@@ -1,5 +1,3 @@
-"""Load MAS (HF transformers, single GPU) and Judge (vLLM HTTP) models."""
-
 import yaml
 
 from .hf_client import HFClient, HFModelConfig

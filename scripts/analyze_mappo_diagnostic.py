@@ -1,23 +1,3 @@
-#!/usr/bin/env python3
-"""Offline diagnostic analysis of MAPPO eval data.
-
-Answers all 6 of Meng's diagnostic questions from the per-turn JSONL dumps
-plus train_log.jsonl. Produces a rough markdown report with tables.
-
-Inputs (all under --run-dir, default data/results/mappo/main):
-  train_log.jsonl                          # per-update rollout stats
-  eval_<idx>_turns.jsonl                   # per-turn greedy eval, default seed
-  eval_<idx>_turns_seed<S>.jsonl           # second-seed greedy eval (optional)
-  eval_<idx>_turns_seed<S>_stoch.jsonl     # stochastic eval (sanity check)
-  baseline_turns_seed10000.jsonl           # untrained policy through same harness
-  reeval_<idx>.json                        # summary jsons (cross-check)
-  eval_<idx>.json                          # original training-time summaries
-
-Outputs:
-  - Console tables for each of Meng's 6 items
-  - mindsafeDocs/mappo_diagnostic.md with the same content
-"""
-
 from __future__ import annotations
 
 import argparse
@@ -28,10 +8,6 @@ from pathlib import Path
 
 import numpy as np
 
-
-# -----------------------------------------------------------------------------
-# Loading helpers
-# -----------------------------------------------------------------------------
 
 def load_jsonl(path: Path) -> list[dict]:
     if not path.exists():
@@ -47,13 +23,8 @@ def col(rows: list[dict], key: str) -> np.ndarray:
     )
 
 
-# -----------------------------------------------------------------------------
-# Bootstrap helpers
-# -----------------------------------------------------------------------------
-
 def boot_ci(values: np.ndarray, n_boot: int = 10_000, ci: float = 0.95,
             rng: np.random.Generator | None = None) -> tuple[float, float, float]:
-    """Returns (mean, ci_low, ci_high)."""
     v = values[~np.isnan(values)]
     if len(v) == 0:
         return float("nan"), float("nan"), float("nan")
@@ -67,7 +38,6 @@ def boot_ci(values: np.ndarray, n_boot: int = 10_000, ci: float = 0.95,
 
 def boot_diff_ci(a: np.ndarray, b: np.ndarray, n_boot: int = 10_000,
                  rng: np.random.Generator | None = None) -> tuple[float, float, float]:
-    """Returns (mean_diff = mean(b)-mean(a), low, high) — independent samples."""
     a = a[~np.isnan(a)]
     b = b[~np.isnan(b)]
     if len(a) == 0 or len(b) == 0:
@@ -81,21 +51,13 @@ def boot_diff_ci(a: np.ndarray, b: np.ndarray, n_boot: int = 10_000,
     return float(diffs.mean()), float(np.percentile(diffs, 2.5)), float(np.percentile(diffs, 97.5))
 
 
-# -----------------------------------------------------------------------------
-# Cluster bootstrap — treats each (scenario, ep) as one correlated unit.
-# Turns within an episode share the patient and the policy state, so they are
-# not independent. Resampling at the turn level underestimates variance and
-# narrows CIs artificially. The cluster bootstrap resamples whole episodes
-# with replacement instead.
-# -----------------------------------------------------------------------------
-
+# one cluster = one (scenario, ep). turns within an episode share the patient and policy state, so they are
+# correlated; the cluster bootstrap resamples whole episodes (not turns) to avoid artificially narrow CIs
 def cluster_ids_of(rows: list[dict]) -> np.ndarray:
-    """One cluster id per (scenario, ep) pair, encoded as a string."""
     return np.array([f"{r.get('scenario','?')}|{r.get('ep','?')}" for r in rows])
 
 
 def _cluster_groups(cluster_ids: np.ndarray) -> list[np.ndarray]:
-    """Return list of row-index arrays, one per unique cluster."""
     uniq, inv = np.unique(cluster_ids, return_inverse=True)
     return [np.where(inv == i)[0] for i in range(len(uniq))]
 
@@ -103,7 +65,6 @@ def _cluster_groups(cluster_ids: np.ndarray) -> list[np.ndarray]:
 def boot_ci_cluster(values: np.ndarray, cluster_ids: np.ndarray,
                     n_boot: int = 10_000, ci: float = 0.95,
                     rng: np.random.Generator | None = None) -> tuple[float, float, float]:
-    """Cluster bootstrap on the mean. Returns (point_mean, ci_low, ci_high)."""
     if len(values) == 0:
         return float("nan"), float("nan"), float("nan")
     rng = rng or np.random.default_rng(0)
@@ -128,8 +89,6 @@ def boot_diff_ci_cluster(a: np.ndarray, a_clusters: np.ndarray,
                           b: np.ndarray, b_clusters: np.ndarray,
                           n_boot: int = 10_000,
                           rng: np.random.Generator | None = None) -> tuple[float, float, float]:
-    """Cluster-bootstrap on the difference mean(b) - mean(a). Independent
-    cluster samples on each side. Returns (point_diff, ci_low, ci_high)."""
     if len(a) == 0 or len(b) == 0:
         return float("nan"), float("nan"), float("nan")
     rng = rng or np.random.default_rng(0)
@@ -158,10 +117,6 @@ def fmt(m: float, lo: float, hi: float) -> str:
     return f"{m:>7.4f} [{lo:>7.4f},{hi:>7.4f}]"
 
 
-# -----------------------------------------------------------------------------
-# Output buffer
-# -----------------------------------------------------------------------------
-
 class Out:
     def __init__(self):
         self.buf = StringIO()
@@ -171,10 +126,6 @@ class Out:
     def text(self) -> str:
         return self.buf.getvalue()
 
-
-# -----------------------------------------------------------------------------
-# Section 1 — sanity check
-# -----------------------------------------------------------------------------
 
 def section_1_sanity(o: Out, run_dir: Path, train_rows: list[dict],
                      greedy_data: dict, stoch_files: dict):
@@ -193,7 +144,6 @@ def section_1_sanity(o: Out, run_dir: Path, train_rows: list[dict],
     sanity_greedy_rows = load_jsonl(run_dir / "eval_00027_turns_seed27042.jsonl")
     sanity_stoch_rows  = load_jsonl(run_dir / "eval_00027_turns_seed27042_stoch.jsonl")
 
-    # Restrict the stochastic eval to ep<4 so n matches the rollout's n=300.
     sanity_stoch_ep04 = [r for r in sanity_stoch_rows if r["ep"] < 4]
 
     o("```")
@@ -254,10 +204,6 @@ def section_1_sanity(o: Out, run_dir: Path, train_rows: list[dict],
     o()
 
 
-# -----------------------------------------------------------------------------
-# Section 2 — headline: baseline vs MAPPO
-# -----------------------------------------------------------------------------
-
 def section_2_headline(o: Out, run_dir: Path):
     o("## Item 2 — Headline: baseline vs MAPPO c_consensus on held-out")
     o()
@@ -281,8 +227,6 @@ def section_2_headline(o: Out, run_dir: Path):
     b_cl   = cluster_ids_of(base_rows)
     if u24_s2:
         m_rows_combined = u24_rows + u24_s2
-        # Tag seed onto the cluster id so the two seeds form independent clusters,
-        # not collapsed by the same (scenario, ep) name.
         m_clusters = np.array(
             [f"s10024|{r['scenario']}|{r['ep']}" for r in u24_rows]
             + [f"s20024|{r['scenario']}|{r['ep']}" for r in u24_s2]
@@ -292,12 +236,10 @@ def section_2_headline(o: Out, run_dir: Path):
         m_clusters = cluster_ids_of(u24_rows)
     m_c_combined = np.array([r["c_consensus"] for r in m_rows_combined], dtype=float)
 
-    # Cluster bootstrap point estimates and CIs
     bm, blo, bhi = boot_ci_cluster(b_c, b_cl, rng=rng)
     mm, mlo, mhi = boot_ci_cluster(m_c_combined, m_clusters, rng=rng)
     dm, dlo, dhi = boot_diff_ci_cluster(b_c, b_cl, m_c_combined, m_clusters, rng=rng)
 
-    # Also compute the turn-level result so the comparison is visible
     bm_t, blo_t, bhi_t = boot_ci(b_c, rng=np.random.default_rng(1))
     mm_t, mlo_t, mhi_t = boot_ci(m_c_combined, rng=np.random.default_rng(2))
     dm_t, dlo_t, dhi_t = boot_diff_ci(b_c, m_c_combined, rng=np.random.default_rng(3))
@@ -346,10 +288,6 @@ def section_2_headline(o: Out, run_dir: Path):
           f"seed 20024 mean={m2:.4f} (|Δ|={abs(m1-m2):.4f})")
         o()
 
-
-# -----------------------------------------------------------------------------
-# Section 2b — therapeutic quality (rule out caution-bought safety gain)
-# -----------------------------------------------------------------------------
 
 def section_2b_quality(o: Out, run_dir: Path):
     o("## Item 2b — Therapeutic quality, baseline vs MAPPO u24")
@@ -404,7 +342,6 @@ def section_2b_quality(o: Out, run_dir: Path):
     o("```")
     o()
 
-    # Per-scenario breakdown — point estimates only (CIs per scenario would be wide)
     scens = sorted({r["scenario"] for r in base_rows})
     o("**Per-scenario therapeutic quality:**")
     o("```")
@@ -421,10 +358,6 @@ def section_2b_quality(o: Out, run_dir: Path):
     o("```")
     o()
 
-
-# -----------------------------------------------------------------------------
-# Section 3 — c_consensus split
-# -----------------------------------------------------------------------------
 
 def section_3_split(o: Out, run_dir: Path, ckpts: list[int]):
     o("## Item 3 — c_consensus split into similarity_term and unsafety_term")
@@ -463,10 +396,6 @@ def section_3_split(o: Out, run_dir: Path, ckpts: list[int]):
     o("(and equal to baseline), MAPPO did NOT push latent agreement down.")
     o()
 
-
-# -----------------------------------------------------------------------------
-# Section 4 — per-scenario table
-# -----------------------------------------------------------------------------
 
 def section_4_scenarios(o: Out, run_dir: Path, ckpts: list[int]):
     o("## Item 4 — Per-scenario c_consensus (held-out)")
@@ -530,10 +459,6 @@ def section_4_scenarios(o: Out, run_dir: Path, ckpts: list[int]):
     o()
 
 
-# -----------------------------------------------------------------------------
-# Section 5 — critic health
-# -----------------------------------------------------------------------------
-
 def section_5_critic(o: Out, train_rows: list[dict]):
     o("## Item 5 — Critic health")
     o()
@@ -558,10 +483,6 @@ def section_5_critic(o: Out, train_rows: list[dict]):
         o("> a broken critic.")
     o()
 
-
-# -----------------------------------------------------------------------------
-# Section 6 — reward and advantage scales
-# -----------------------------------------------------------------------------
 
 def section_6_scales(o: Out, train_rows: list[dict]):
     o("## Item 6 — Reward and advantage scales")
@@ -599,10 +520,6 @@ def section_6_scales(o: Out, train_rows: list[dict]):
     o()
 
 
-# -----------------------------------------------------------------------------
-# Main
-# -----------------------------------------------------------------------------
-
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run-dir", default="data/results/mappo/main")
@@ -614,7 +531,6 @@ def main():
     run_dir = Path(args.run_dir)
     train_rows = load_jsonl(run_dir / "train_log.jsonl")
 
-    # File discovery
     greedy_data = {u: load_jsonl(run_dir / f"eval_{u:05d}_turns.jsonl")
                    for u in args.checkpoints}
     stoch_files = sorted(run_dir.glob("eval_*_turns_*_stoch.jsonl"))

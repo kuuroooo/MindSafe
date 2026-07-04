@@ -1,36 +1,3 @@
-#!/usr/bin/env python3
-"""Compute and analyze the unsafe-consensus penalty c_consensus per turn.
-
-Implements proposal Eq. 4:
-
-    c_consensus(s_t) = exp(-d(h_therapist, h_monitor) / τ) · (1 - σ(s_t))
-
-This is the continuous reward-shaping signal MAPPO will minimize during
-training. Before training, we use this script to validate three things
-the penalty needs to satisfy:
-
-  1. Dynamic range — c spans a wide enough interval to provide gradient.
-  2. Validity — high-c turns are clinically problematic (sanity check).
-  3. Responsiveness — attacks shift the c distribution (cross-arm comparison).
-
-Usage:
-  python scripts/consensus_penalty.py <sweep_dir> [<sweep_dir> ...] \
-      [--tau 0.1] [--top-k 3] [--by-scenario] [--released-only]
-
-Examples:
-  # Distribution + cross-arm comparison
-  python scripts/consensus_penalty.py \
-    data/results/baseline/sweep_20260425_165007 \
-    data/results/baseline/run_22355364
-
-  # Just the high-penalty turns released as safe (the false-positive set
-  # MAPPO is supposed to suppress).
-  python scripts/consensus_penalty.py \
-    data/results/baseline/sweep_20260425_165007 \
-    data/results/baseline/run_22355364 \
-    --released-only --top-k 5
-"""
-
 import argparse
 import json
 import math
@@ -40,12 +7,8 @@ from pathlib import Path
 from typing import Iterator, Tuple
 
 
+# same formula as src/mappo/reward.py c_consensus, so baseline and training penalties share a scale
 def consensus_penalty(d: float, sigma: float, tau: float) -> float:
-    """c_consensus = exp(-d / tau) · (1 - sigma).
-
-    High when agents are in latent agreement (small d → exp ≈ 1) and the
-    response is judged unsafe (small sigma → 1-sigma ≈ 1).
-    """
     return math.exp(-d / tau) * (1.0 - sigma)
 
 
@@ -56,7 +19,6 @@ def quantiles(xs, qs=(0.5, 0.75, 0.9, 0.95, 0.99)):
 
 
 def walk_arm(arm_dir: Path) -> Iterator[Tuple[str, str, dict]]:
-    """Yield (scenario, conv_id, turn_dict) for every turn in an arm."""
     logs = arm_dir / "logs"
     if not logs.exists():
         return
@@ -72,7 +34,6 @@ def walk_arm(arm_dir: Path) -> Iterator[Tuple[str, str, dict]]:
 
 
 def gather_arms(sweep_dirs):
-    """Yield (arm_label, arm_dir) from a list of sweep dirs."""
     for sweep in sweep_dirs:
         sweep = Path(sweep)
         if not sweep.exists():
@@ -83,7 +44,6 @@ def gather_arms(sweep_dirs):
 
 
 def collect(arm_dir: Path, tau: float, released_only: bool):
-    """Return list of dicts with c, sigma, d, scenario, conv, turn_dict."""
     rows = []
     for scen, conv, t in walk_arm(arm_dir):
         d = t.get("latent_distance")
@@ -157,7 +117,6 @@ def main():
 
     arms = list(gather_arms(args.sweep_dirs))
 
-    # Collect per-arm rows
     per_arm = {}
     for arm_label, arm_dir in arms:
         rows = collect(arm_dir, args.tau, args.released_only)
@@ -167,7 +126,6 @@ def main():
     if not per_arm:
         raise SystemExit("No data collected.")
 
-    # Distribution headline
     print("=" * 130)
     print("PER-ARM DISTRIBUTION")
     print("=" * 130)
@@ -176,7 +134,6 @@ def main():
     for arm_label, rows in per_arm.items():
         print(fmt_dist(rows, arm_label, baseline_p95=base_p95))
 
-    # Cross-arm shifts
     if base:
         print()
         print("CROSS-ARM SHIFT (vs psi baseline):")
@@ -192,7 +149,6 @@ def main():
             print(f"  {arm_label:<38}  mean Δ={mdelta:+.3f}   "
                   f"p95 Δ={p95-bp95:+.3f}   tail>{bp95:.3f} = {above:.1%}")
 
-    # Top-K turns per arm
     print()
     print("=" * 130)
     print(f"TOP-{args.top_k} c_consensus TURNS PER ARM (validity check)")
@@ -201,7 +157,6 @@ def main():
         print(f"\n=== {arm_label} ===")
         print(render_top(rows, args.top_k))
 
-    # Per-scenario × arm
     if args.by_scenario:
         print()
         print("=" * 130)
