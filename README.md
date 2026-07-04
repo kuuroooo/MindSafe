@@ -66,7 +66,7 @@ MAPPO numbers use checkpoint **u24** (training stopped early — see the note in
 
 ```
 src/agents, mas, models, simulation, redteam, evaluation   baseline framework (frozen)
-src/mappo/          MAPPO training — see src/mappo/README.md
+src/mappo/          MAPPO training
 scripts/            runners + analysis
 slurm/              Snellius batch jobs
 configs/            experiment_4gpu.yaml (baseline), mappo_4gpu*.yaml (training)
