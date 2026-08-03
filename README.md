@@ -83,6 +83,8 @@ Any reduction in `c` is Judge-mediated. A reward-scale obstruction plus the
 multiplicative form of the penalty explain why the intended mechanism is never
 reached.
 
+![Decomposition of c across training checkpoints: the latent-similarity factor stays flat while c tracks the Judge-derived unsafety factor](figures/mechanism_decomposition.png)
+
 ### Beyond the proxy
 
 `c` is a proxy, so the eval harness also reports raw safety outcomes (u24, n=5).
