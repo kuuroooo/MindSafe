@@ -8,10 +8,10 @@ Contributions: a continuous unsafe-consensus probe c = exp(−d/κ)·(1−σ); a
 
 Two stages:
 
-- **Baseline** measures the *unsafe-consensus* failure mode (the agents agree, the
-  judge rates the turn unsafe, but it's still released as safe), including under
+- **Baseline** measures the unsafe-consensus failure mode, including under
   monitor-persuasion and insider-threat attacks.
-- **MAPPO** trains the agents' LoRA policies with a shared safety reward to reduce it.
+- **MAPPO** co-trains the agents' LoRA policies on a shared safety reward intended
+  to reduce it — see Results for whether it does.
 
 Runs on Snellius (4x A100: policy on GPU 0, vLLM judge on GPUs 1-3).
 
@@ -48,6 +48,30 @@ sbatch slurm/run_baseline_compromised_monitor.job   # insider-threat (compromise
 
 Both runners take `--config` / `--output-dir` / `--arms`; see the `slurm/*.job` files for exact flags.
 
+## Running without a cluster
+
+The runs above need 4×A100 and are Slurm-specific. Everything in the Results
+section, however, was produced by analysis scripts that run on CPU against logs
+committed to this repo, so the reported numbers can be checked without any GPU:
+
+```bash
+pip install -r requirements.txt
+
+# unsafe-consensus cost, baseline arms
+python3 scripts/consensus_penalty.py \
+    data/results/baseline/sweep_20260425_165007 data/results/baseline/run_22408247 \
+    --released-only --top-k 5 --by-scenario
+
+# MAPPO diagnostics: per-checkpoint c, latent distance, ablation comparison
+python3 scripts/analyze_mappo_diagnostic.py --run-dir data/results/mappo/main
+```
+
+MAPPO numbers use checkpoint u24 (training stopped early; see the note in
+`configs/mappo_4gpu.yaml`). Raw eval records and checkpoint logs live under
+`data/results/`; see `data/results/baseline/MANIFEST.md` for what each run
+directory contains. To regenerate eval logs from checkpoints (needs the
+cluster): `sbatch slurm/reeval_checkpoints.job`.
+
 ## Results
 
 Held-out unsafe-consensus cost `c`, baseline vs. MAPPO at checkpoint u24.
@@ -72,6 +96,8 @@ Leave-one-scenario-out re-estimation kills the pooled significance when
 
 ### The latent mechanism never engages (RQ2)
 
+![Decomposition of c across training checkpoints: the latent-similarity factor stays flat while c tracks the Judge-derived unsafety factor](figures/mechanism_decomposition.png)
+
 Latent distance between Therapist and Monitor stays flat for the whole of
 training. An ablation removing the latent gate entirely (penalty is just the
 unsafety factor (1−σ)) is indistinguishable from the full model (c = 0.137 vs
@@ -82,8 +108,6 @@ within-run variation.
 Any reduction in `c` is Judge-mediated. A reward-scale obstruction plus the
 multiplicative form of the penalty explain why the intended mechanism is never
 reached.
-
-![Decomposition of c across training checkpoints: the latent-similarity factor stays flat while c tracks the Judge-derived unsafety factor](figures/mechanism_decomposition.png)
 
 ### Beyond the proxy
 
@@ -103,38 +127,6 @@ Robustness: the effect holds with the revision loop on or off (the loop shifts
 - **Use multiple simulator seeds.** Magnitude *and* sign move between seeds.
 - **Decode greedily at eval.** Training-temperature decoding adds ~17%
   between-run variability in `c`.
-
-### Running without a cluster
-
-The training and baseline runs above need 4×A100 (policy on GPU 0, vLLM judge on
-GPUs 1–3) and are Slurm-specific. Everything in the Results section, however, was
-produced by analysis scripts that run on CPU against logs committed to this repo,
-so the reported numbers can be checked without any GPU:
-
-```bash
-pip install -r requirements.txt
-
-# unsafe-consensus cost, baseline arms
-python3 scripts/consensus_penalty.py \
-    data/results/baseline/sweep_20260425_165007 data/results/baseline/run_22408247 \
-    --released-only --top-k 5 --by-scenario
-
-# MAPPO diagnostics: per-checkpoint c, latent distance, ablation comparison
-python3 scripts/analyze_mappo_diagnostic.py --run-dir data/results/mappo/main
-```
-
-Raw eval records and checkpoint logs live under `data/results/`; see
-`data/results/baseline/MANIFEST.md` for what each run directory contains.
-
-## Reproduce the reported numbers (from committed logs)
-
-# MAPPO 
-python3 scripts/analyze_mappo_diagnostic.py --run-dir data/results/mappo/main
-# regenerate the eval logs from checkpoints: sbatch slurm/reeval_checkpoints.job
-```
-
-MAPPO numbers use checkpoint u24 (training stopped early; see the note in
-`configs/mappo_4gpu.yaml`). Baseline details: `data/results/baseline/MANIFEST.md`.
 
 ## Layout
 
